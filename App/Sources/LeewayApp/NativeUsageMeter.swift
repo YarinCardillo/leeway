@@ -8,10 +8,10 @@ enum NativeUsageMeter {
     static let height: CGFloat = 10
     private static let renderScale: CGFloat = 3
 
-    static func attachment(account: AccountUsage, width: CGFloat, isHighlighted: Bool = false) -> NSAttributedString? {
+    static func attachment(account: AccountUsage, width: CGFloat) -> NSAttributedString? {
         guard let layout = ForecastMeterLayout(account: account) else { return nil }
         let tint = Color(nsColor: RiskTextColor.verdict(account))
-        let palette = isHighlighted ? ForecastMeter.Palette.highlighted : .standard(verdict: tint)
+        let palette = ForecastMeter.Palette.standard(verdict: tint)
         let renders = [ColorScheme.light, .dark].map { render(layout, palette: palette, scheme: $0, width: width) }
         let size = NSSize(width: width, height: height)
         let image = NSImage(size: size, flipped: false) { rect in

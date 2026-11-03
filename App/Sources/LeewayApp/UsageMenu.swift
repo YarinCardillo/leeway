@@ -103,14 +103,16 @@ final class UsageMenu: NSObject, NSMenuDelegate {
         let changed = [highlightedID, id].compactMap { $0 }
         highlightedID = id
         for account in model.enabledAccounts where changed.contains(account.id) {
-            accountItems[account.id]?.attributedTitle = rowTitle(account, isHighlighted: account.id == id)
+            guard let item = accountItems[account.id] else { continue }
+            (item.view as? AccountMenuRow)?.isHighlighted = account.id == id
         }
     }
 
     func updateReadingTimes() {
         for account in model.enabledAccounts {
             guard let item = accountItems[account.id] else { continue }
-            item.attributedTitle = rowTitle(account, isHighlighted: account.id == highlightedID)
+            item.attributedTitle = rowTitle(account)
+            (item.view as? AccountMenuRow)?.update(title: item.attributedTitle)
             updateAccessibility(item, account: account)
         }
         updatedItem?.title = strings.updated(model.accounts.compactMap(\.recordedAt).max(), isRefreshing: model.isRefreshing) ?? ""
@@ -119,9 +121,10 @@ final class UsageMenu: NSObject, NSMenuDelegate {
 
     private func accountItem(_ account: AccountUsage) -> NSMenuItem {
         let item = NSMenuItem(title: account.name, action: nil, keyEquivalent: "")
-        item.attributedTitle = rowTitle(account, isHighlighted: account.id == highlightedID)
+        item.attributedTitle = rowTitle(account)
         item.isEnabled = true
         item.submenu = detailMenu(account)
+        item.view = AccountMenuRow(item: item)
         updateAccessibility(item, account: account)
         accountItems[account.id] = item
         return item
@@ -133,23 +136,23 @@ final class UsageMenu: NSObject, NSMenuDelegate {
         item.setAccessibilityValue([strings.usageFacts(account), strings.resetFacts(account), age].compactMap { $0 }.joined(separator: ". "))
     }
 
-    private func rowTitle(_ account: AccountUsage, isHighlighted: Bool) -> NSAttributedString {
-        let title = NSMutableAttributedString(attributedString: headline(account, isHighlighted: isHighlighted))
-        if let meter = NativeUsageMeter.attachment(account: account, width: Self.contentWidth, isHighlighted: isHighlighted) {
+    private func rowTitle(_ account: AccountUsage) -> NSAttributedString {
+        let title = NSMutableAttributedString(attributedString: headline(account))
+        if let meter = NativeUsageMeter.attachment(account: account, width: Self.contentWidth) {
             title.append(NSAttributedString(string: "\n"))
             title.append(styled(meter, spacingBefore: Self.lineGap))
         }
         title.append(NSAttributedString(string: "\n"))
-        title.append(caption(account, isHighlighted: isHighlighted))
+        title.append(caption(account))
         return title
     }
 
     /// Line 1: the account name, and the verdict in words at the trailing edge.
-    private func headline(_ account: AccountUsage, isHighlighted: Bool) -> NSAttributedString {
-        let color = isHighlighted ? NSColor.selectedMenuItemTextColor : RiskTextColor.verdict(account)
+    private func headline(_ account: AccountUsage) -> NSAttributedString {
+        let color = RiskTextColor.verdict(account)
         let line = NSMutableAttributedString(string: account.name,
             attributes: [.font: NSFont.menuFont(ofSize: 13),
-                         .foregroundColor: isHighlighted ? NSColor.selectedMenuItemTextColor : NSColor.labelColor,
+                         .foregroundColor: NSColor.labelColor,
                          .paragraphStyle: paragraph()])
         line.append(NSAttributedString(string: "\t" + strings.status(account), attributes: [
             .font: NSFont.systemFont(ofSize: 13, weight: .semibold), .foregroundColor: color, .paragraphStyle: paragraph()]))
@@ -157,13 +160,13 @@ final class UsageMenu: NSObject, NSMenuDelegate {
     }
 
     /// Line 3: regular weight, secondary colour, tabular figures. Nothing here is bold.
-    private func caption(_ account: AccountUsage, isHighlighted: Bool) -> NSAttributedString {
+    private func caption(_ account: AccountUsage) -> NSAttributedString {
         let font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
         let line = NSMutableAttributedString(string: strings.menuCaption(account), attributes: [
-            .font: font, .foregroundColor: isHighlighted ? NSColor.selectedMenuItemTextColor : NSColor.secondaryLabelColor, .paragraphStyle: paragraph(spacingBefore: Self.lineGap)])
+            .font: font, .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: paragraph(spacingBefore: Self.lineGap)])
         if let age = strings.readingAge(account, pollingMinutes: model.preferences.pollingMinutes) {
             line.append(NSAttributedString(string: ", " + age, attributes: [
-                .font: font, .foregroundColor: isHighlighted ? NSColor.selectedMenuItemTextColor : NSColor.systemOrange, .paragraphStyle: paragraph(spacingBefore: Self.lineGap)]))
+                .font: font, .foregroundColor: NSColor.systemOrange, .paragraphStyle: paragraph(spacingBefore: Self.lineGap)]))
         }
         return line
     }
