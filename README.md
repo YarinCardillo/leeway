@@ -6,10 +6,47 @@ Claudy with a chance of rate limits.
   <img src="docs/images/menu.png" width="490" alt="Leeway menu in dark mode showing sample account usage, forecasts and target ticks">
 </p>
 
-Leeway is a macOS menu bar app for Claude Code and Codex. For every account
-signed in on your Mac it shows how much of this week's quota you have used,
-where you will land at the reset, and whether that falls inside the target
-range you chose.
+Leeway forecasts where each Claude Code and Codex account will land at the
+weekly reset, so you see a rate limit coming days before it hits. It lives in
+the macOS menu bar and compares every forecast with the target range you
+choose.
+
+Your agents can ask it too. Before they spend, they check which account and
+which model still have room, and they switch or wait when one is about to run
+out.
+
+## Forecast and target
+
+The forecast carries two paces to the reset: this week's average and the last
+24 hours. Leeway compares that range with your target, 75-100% by default:
+
+- **Room to use**: the whole forecast is below the target.
+- **On target**: the forecast and the target overlap.
+- **Over target**: the whole forecast is above the target. Orange when you would
+  run out up to 12 hours before the reset, red when earlier.
+
+The forecast is an estimate, not a guarantee.
+
+## Agents
+
+Agents can ask Leeway before they spend:
+
+```sh
+leeway status --json
+leeway headroom --account Work
+```
+
+`leeway serve` exposes the same data on `127.0.0.1` only. Optional hooks for
+Claude Code and Codex can warn, switch to a reserve account or block when an
+account is over target. Nothing is steered unless you install them:
+
+```sh
+leeway integrations install
+```
+
+Rules live in `~/.config/leeway/policy.toml`; start from
+[policy.toml.example](integrations/policy.toml.example). Details in the
+[integration guide](integrations/README.md) and the [API](docs/api.md).
 
 ## Install
 
@@ -48,44 +85,11 @@ Readings repeat every 15 minutes by default (5 to 30 in Settings), or on
 Refresh Now. A failed reading keeps the last good one, marks it out of date
 and says why.
 
-## Forecast and target
-
-The forecast carries two paces to the reset: this week's average and the last
-24 hours. Leeway compares that range with your target, 75-100% by default:
-
-- **Room to use**: the whole forecast is below the target.
-- **On target**: the forecast and the target overlap.
-- **Over target**: the whole forecast is above the target. Orange when you would
-  run out up to 12 hours before the reset, red when earlier.
-
-The forecast is an estimate, not a guarantee.
-
 ## Privacy
 
 Leeway never reads, copies or stores credentials, and has no telemetry. History
 stays in `~/Library/Application Support/leeway/history.sqlite`. The only network
 traffic is what the official Claude CLI sends and the update check.
-
-## Agents
-
-Agents can ask Leeway before they spend:
-
-```sh
-leeway status --json
-leeway headroom --account Work
-```
-
-`leeway serve` exposes the same data on `127.0.0.1` only. Optional hooks for
-Claude Code and Codex can warn, switch to a reserve account or block when an
-account is over target. Nothing is steered unless you install them:
-
-```sh
-leeway integrations install
-```
-
-Rules live in `~/.config/leeway/policy.toml`; start from
-[policy.toml.example](integrations/policy.toml.example). Details in the
-[integration guide](integrations/README.md) and the [API](docs/api.md).
 
 ## Uninstall
 
