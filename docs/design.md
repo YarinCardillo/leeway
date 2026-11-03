@@ -390,7 +390,7 @@ The compact status icon is a template asset; the account-row forecast meter uses
 
 ### Exception: Neutral account selection
 
-The owner changed the requirement on 2026-11-03: account rows must use silver or
+Since 2026-11-03: account rows must use silver or
 grey instead of accent selection. AppKit has no public per-item selection-colour
 setter. AccountMenuRow is a drawing-only NSMenuItem view using NSMenuItemCell to
 measure the native title inset and row size. It draws the attributed title and
@@ -412,6 +412,6 @@ fallback icon for macOS 14 and 15. The former raster app icon is no longer an
 input. See Apple's [Icon Composer documentation](https://developer.apple.com/documentation/xcode/creating-your-app-icon-using-icon-composer).
 
 
-### Approved detail title, owner choice 2026-11-03
+### Approved detail title, 2026-11-03
 
-The owner selected A: SF Pro Display Light 34 pt, secondary 18 pt percent and 10 pt caption. The temporary preference and the other studies are removed. This replaces the previous heavy title requirement.
+Variant A was chosen: SF Pro Display Light 34 pt, secondary 18 pt percent and 10 pt caption. The temporary preference and the other studies are removed. This replaces the previous heavy title requirement.
