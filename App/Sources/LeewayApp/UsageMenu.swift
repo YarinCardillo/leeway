@@ -1,6 +1,7 @@
 import AppKit
 import AppModel
 import SwiftUI
+import Observation
 
 /// Native menu items own selection, tracking, keyboard shortcuts and submenu placement.
 @MainActor
@@ -13,6 +14,7 @@ final class UsageMenu: NSObject, NSMenuDelegate {
     private static let lineGap: CGFloat = 3
     private var accountItems: [String: NSMenuItem] = [:]
     private var highlightedID: String?
+    private var highlightGeneration = 0
     private weak var rootMenu: NSMenu?
     private var updatedItem: NSMenuItem?
     private var openDetailID: String?
@@ -21,6 +23,8 @@ final class UsageMenu: NSObject, NSMenuDelegate {
     init(model: UsageModel, openSettings: @escaping () -> Void) {
         self.model = model
         self.openSettings = openSettings
+        super.init()
+        observeReadings()
     }
 
     func makeMenu() -> NSMenu {
@@ -37,6 +41,7 @@ final class UsageMenu: NSObject, NSMenuDelegate {
         menu.removeAllItems()
         accountItems.removeAll()
         highlightedID = nil
+        highlightGeneration += 1
         for account in model.enabledAccounts { menu.addItem(accountItem(account)) }
         if model.enabledAccounts.isEmpty { addEmptyState(to: menu) }
         menu.addItem(.separator())
@@ -83,6 +88,8 @@ final class UsageMenu: NSObject, NSMenuDelegate {
     /// AppKit retains the parent selection while its detail submenu is tracking.
     func menu(_ menu: NSMenu, willHighlight item: NSMenuItem?) {
         guard menu === rootMenu else { return }
+        highlightGeneration += 1
+        let generation = highlightGeneration
         if let item {
             let id = accountItems.first { $0.value === item }?.key
             if id != openDetailID { openDetailID = nil }
@@ -90,10 +97,26 @@ final class UsageMenu: NSObject, NSMenuDelegate {
         } else {
             // AppKit can send nil just before opening the submenu. Reconcile after that transition.
             Task { @MainActor [weak self] in
-                guard let self, self.readingTimer != nil, self.openDetailID == nil else { return }
-                self.setHighlighted(self.rootMenu?.highlightedItem.flatMap { item in
+                guard let self, self.readingTimer != nil, self.openDetailID == nil,
+                      self.highlightGeneration == generation else { return }
+                let pointed = self.accountItems.first { ($0.value.view as? AccountMenuRow)?.isPointerInside == true }?.key
+                self.setHighlighted(pointed ?? self.rootMenu?.highlightedItem.flatMap { item in
                     self.accountItems.first { $0.value === item }?.key
                 })
+            }
+        }
+    }
+
+    private func observeReadings() {
+        withObservationTracking {
+            _ = model.accounts
+            _ = model.isRefreshing
+            _ = model.preferences.pinnedID
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                if self.readingTimer != nil { self.updateReadingTimes() }
+                self.observeReadings()
             }
         }
     }
@@ -109,6 +132,10 @@ final class UsageMenu: NSObject, NSMenuDelegate {
     }
 
     func updateReadingTimes() {
+        rootMenu?.items.first { $0.action == #selector(showAutomatic) }?.state = model.preferences.pinnedID == nil ? .on : .off
+        for (id, item) in accountItems {
+            item.submenu?.items.last?.state = model.preferences.pinnedID == id ? .on : .off
+        }
         for account in model.enabledAccounts {
             guard let item = accountItems[account.id] else { continue }
             item.attributedTitle = rowTitle(account)
@@ -124,14 +151,25 @@ final class UsageMenu: NSObject, NSMenuDelegate {
         item.attributedTitle = rowTitle(account)
         item.isEnabled = true
         item.submenu = detailMenu(account)
-        item.view = AccountMenuRow(item: item)
+        let row = AccountMenuRow(item: item)
+        row.onHover = { [weak self] isInside in self?.hoverAccount(account.id, isInside: isInside) }
+        item.view = row
         updateAccessibility(item, account: account)
         accountItems[account.id] = item
         return item
     }
 
+    private func hoverAccount(_ id: String, isInside: Bool) {
+        if isInside {
+            if id != openDetailID { openDetailID = nil }
+            setHighlighted(id)
+        } else if highlightedID == id, openDetailID != id {
+            setHighlighted(nil)
+        }
+    }
+
     private func updateAccessibility(_ item: NSMenuItem, account: AccountUsage) {
-        item.setAccessibilityLabel("\(account.name), \(strings.status(account))")
+        item.setAccessibilityLabel("\(account.name), \(strings.status(account, isRefreshing: model.isRefreshing))")
         let age = strings.readingAgeLabel(account, pollingMinutes: model.preferences.pollingMinutes)
         item.setAccessibilityValue([strings.usageFacts(account), strings.resetFacts(account), age].compactMap { $0 }.joined(separator: ". "))
     }
@@ -154,7 +192,7 @@ final class UsageMenu: NSObject, NSMenuDelegate {
             attributes: [.font: NSFont.menuFont(ofSize: 13),
                          .foregroundColor: NSColor.labelColor,
                          .paragraphStyle: paragraph()])
-        line.append(NSAttributedString(string: "\t" + strings.status(account), attributes: [
+        line.append(NSAttributedString(string: "\t" + strings.status(account, isRefreshing: model.isRefreshing), attributes: [
             .font: NSFont.systemFont(ofSize: 13, weight: .semibold), .foregroundColor: color, .paragraphStyle: paragraph()]))
         return line
     }
@@ -162,7 +200,7 @@ final class UsageMenu: NSObject, NSMenuDelegate {
     /// Line 3: regular weight, secondary colour, tabular figures. Nothing here is bold.
     private func caption(_ account: AccountUsage) -> NSAttributedString {
         let font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
-        let line = NSMutableAttributedString(string: strings.menuCaption(account), attributes: [
+        let line = NSMutableAttributedString(string: strings.menuCaption(account, isRefreshing: model.isRefreshing), attributes: [
             .font: font, .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: paragraph(spacingBefore: Self.lineGap)])
         if let age = strings.readingAge(account, pollingMinutes: model.preferences.pollingMinutes) {
             line.append(NSAttributedString(string: ", " + age, attributes: [

@@ -41,8 +41,8 @@ struct Localizer {
         formatter.locale = locale
         return formatter.localizedString(for: value, relativeTo: Date())
     }
-    func status(_ account: AccountUsage) -> String {
-        guard account.weeklyUsed != nil else { return text("No reading") }
+    func status(_ account: AccountUsage, isRefreshing: Bool = false) -> String {
+        guard account.weeklyUsed != nil else { return text(isRefreshing ? "Reading" : "No reading") }
         guard account.lowerForecast != nil, account.upperForecast != nil else { return text("Forecast unavailable") }
         switch account.status {
         case .onTarget: return text("On target")
@@ -98,7 +98,8 @@ extension Localizer {
     }
 
     /// The quiet third line of a menu row: what was used, where the forecast lands and when the week resets.
-    func menuCaption(_ account: AccountUsage) -> String {
+    func menuCaption(_ account: AccountUsage, isRefreshing: Bool = false) -> String {
+        if account.weeklyUsed == nil, isRefreshing { return text("Reading usage") }
         guard let used = account.weeklyUsed else { return usageFacts(account) }
         var parts = [format("%@ used", percent(used))]
         if let low = account.lowerForecast, let high = account.upperForecast {

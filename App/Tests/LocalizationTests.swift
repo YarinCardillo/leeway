@@ -309,3 +309,15 @@ extension LocalizationTests {
         XCTAssertEqual(strings(.italian).status(value), "Previsione non disponibile")
     }
 }
+
+extension LocalizationTests {
+    func testPendingReading_ShowsProgressThenTheTypedFailure() {
+        var value = account(used: nil)
+        value.error = .timeout
+        let text = strings(.english)
+        XCTAssertEqual(text.status(value, isRefreshing: true), "Reading")
+        XCTAssertEqual(text.menuCaption(value, isRefreshing: true), "Reading usage")
+        XCTAssertEqual(text.status(value), "No reading")
+        XCTAssertEqual(text.menuCaption(value), "Reading timed out")
+    }
+}

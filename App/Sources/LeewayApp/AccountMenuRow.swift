@@ -4,8 +4,13 @@ import AppKit
 @MainActor
 final class AccountMenuRow: NSView {
     private let cell: NSMenuItemCell
+    private var hoverTracking: NSTrackingArea?
+    var onHover: ((Bool) -> Void)?
+    private(set) var isPointerInside = false
     var isHighlighted = false { didSet { needsDisplay = true } }
-    var selectionColor: NSColor { .unemphasizedSelectedContentBackgroundColor }
+    var selectionColor: NSColor {
+        NSColor.unemphasizedSelectedContentBackgroundColor.blended(withFraction: 0.12, of: .labelColor)!
+    }
     override var isFlipped: Bool { true }
 
     init(item: NSMenuItem) {
@@ -32,6 +37,26 @@ final class AccountMenuRow: NSView {
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let hoverTracking { removeTrackingArea(hoverTracking) }
+        let area = NSTrackingArea(rect: .zero,
+            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect, .enabledDuringMouseDrag],
+            owner: self, userInfo: nil)
+        addTrackingArea(area)
+        hoverTracking = area
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        isPointerInside = true
+        onHover?(true)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        isPointerInside = false
+        onHover?(false)
+    }
 
     override func draw(_ dirtyRect: NSRect) {
         if isHighlighted {
