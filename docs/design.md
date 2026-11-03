@@ -169,7 +169,7 @@ The standard macOS Settings window, opened with Command-comma, toolbar tab style
 
 | Property | Value |
 |-|-|
-| Window | Native resizable window, minimum 520 by 440 pt, initial 560 by 500 pt, saved frame. One sizing policy for all tabs; changing panes never changes the user-selected size, and long native Forms scroll internally. The previous content-driven frame is reset once after this owner revision |
+| Window | Native resizable window, minimum 520 by 440 pt, initial 560 by 500 pt, saved frame. One sizing policy for all tabs; changing panes never changes the user-selected size, and long native Forms scroll internally. First opening centers on the pointer screen, using the full screen to detect a menu bar pointer and the visible area to center. Native frame autosave restores user placement afterward. On each opening, fit a partly offscreen saved frame within its display; if that display is disconnected, center on the active screen. Install the toolbar before restoring, and restore before registering autosave, so the provisional frame never replaces a saved frame |
 | Tabs | Accounts, General, Updates, each with an SF Symbol in the toolbar |
 | Form | Grouped form. Row: label and an optional description on the leading side, control on the trailing side, hairline between rows [R10] [R11] |
 | Label | Body 13 pt. Description Subheadline 11 pt, secondary label |

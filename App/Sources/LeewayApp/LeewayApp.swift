@@ -119,11 +119,10 @@ private final class ApplicationDelegate: NSObject, NSApplicationDelegate {
             let hosting = NSHostingController(rootView: SettingsView(model: model, updates: updates, navigation: settingsNavigation))
             hosting.sizingOptions = []
             let window = SettingsWindow(settingsContent: hosting)
-            window.setFrameAutosaveName("LeewaySettingsV2")
             let toolbar = SettingsToolbar(navigation: settingsNavigation, model: model)
             toolbar.install(in: window)
             settingsToolbar = toolbar
-            if !window.setFrameUsingName("LeewaySettingsV2") { window.center() }
+            window.restorePlacement(autosaveName: "LeewaySettingsV2")
             settingsWindow = NSWindowController(window: window)
         }
         (settingsWindow?.window as? SettingsWindow)?.prepareForOpening()
