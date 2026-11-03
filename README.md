@@ -15,6 +15,8 @@ Requires macOS 14 or later, and Claude Code or Codex already signed in.
 brew install --cask yarincardillo/tap/leeway
 ```
 
+If Homebrew refuses an untrusted tap, run `brew trust yarincardillo/tap` first.
+
 Or download `Leeway-<version>.dmg` from
 [Releases](https://github.com/YarinCardillo/leeway/releases/latest) and drag
 Leeway to Applications. The app is signed and notarized, and updates itself
