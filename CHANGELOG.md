@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.2
+
+- New app icon: the Leeway wordmark in white on a sage gradient, in the layered macOS 26 format with fallbacks for macOS 14 and 15.
+
 ## 0.1.1
 
 - Read newly enabled accounts immediately and retain typed source failure messages.

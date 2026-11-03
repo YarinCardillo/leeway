@@ -405,11 +405,19 @@ remain unchanged. Refresh Now, Settings and Quit have no custom view.
 
 ### Layered app icon
 
-App/Resources/AppIcon.icon contains an opaque graphite background and the white
-Phosphor target SVG as a foreground layer. It contains no baked squircle, outer
-padding or shadow. Xcode compiles the document for macOS 26 and generates the
-fallback icon for macOS 14 and 15. The former raster app icon is no longer an
-input. See Apple's [Icon Composer documentation](https://developer.apple.com/documentation/xcode/creating-your-app-icon-using-icon-composer).
+App/Resources/AppIcon.icon contains a full-canvas vertical sage gradient from
+#5f7d6b at the top to #3f5a4a at the bottom, and the centered white wordmark
+Leeway in SF Pro Semibold. There is no foreground symbol. The wordmark ink is
+800 points wide on a 1024-point canvas, centered by its visible path bounds.
+It contains no baked squircle, outer padding or shadow. Xcode compiles the
+document for macOS 26 and generates fallback icons for macOS 14 and 15.
+
+Regenerate with `swift scripts/generate_app_icon.swift`. The script uses CoreText
+to shape SF Pro Semibold and converts every glyph to an SVG path, preserving
+kerning. Only vector outlines ship, with no runtime font dependency. An optional
+output directory supports isolated generation checks. A revision replaced the
+target-on-graphite design with this wordmark on 2026-11-03. See Apple's
+[Icon Composer documentation](https://developer.apple.com/documentation/xcode/creating-your-app-icon-using-icon-composer).
 
 
 ### Approved detail title, 2026-11-03
