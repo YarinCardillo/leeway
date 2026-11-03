@@ -15,6 +15,7 @@ public final class UsageModel {
     @ObservationIgnored private let provider: any UsageProvider
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private var pollingTask: Task<Void, Never>?
+    @ObservationIgnored private var refreshAfterCurrent = false
     private static let preferencesKey = "app.preferences.v1"
 
     public init(provider: any UsageProvider, defaults: UserDefaults = .standard) {
@@ -31,19 +32,46 @@ public final class UsageModel {
         settingsError = failure
     }
 
-    public var enabledAccounts: [AccountUsage] {
-        accounts.filter(\.isEnabled).sorted {
-            if $0.priority != $1.priority { return $0.priority > $1.priority }
-            if $0.upperForecast != $1.upperForecast { return ($0.upperForecast ?? -1) > ($1.upperForecast ?? -1) }
-            return $0.name.localizedStandardCompare($1.name) == .orderedAscending
-        }
+    public var orderedAccounts: [AccountUsage] {
+        preferences.accountOrderMode.ordered(accounts, manualIDs: preferences.manualAccountOrder)
     }
+
+    public var enabledAccounts: [AccountUsage] { orderedAccounts.filter(\.isEnabled) }
 
     public var hasDefaultAccountNames: Bool { accounts.contains(where: \.hasDefaultName) }
 
     public var selectedAccount: AccountUsage? {
-        enabledAccounts.first { $0.id == preferences.pinnedID && $0.weeklyUsed != nil }
-            ?? enabledAccounts.first { $0.weeklyUsed != nil }
+        let candidates = accounts.filter { $0.isEnabled && $0.weeklyUsed != nil }
+        return candidates.first { $0.id == preferences.pinnedID }
+            ?? candidates.sorted(by: AccountOrderMode.higherRisk).first
+    }
+
+    /// Changes menu row ordering without changing automatic status-item selection.
+    public func setAccountOrderMode(_ mode: AccountOrderMode) {
+        guard mode != preferences.accountOrderMode else { return }
+        if mode == .manual, preferences.manualAccountOrder.isEmpty {
+            preferences.manualAccountOrder = orderedAccounts.map(\.id)
+        }
+        preferences.accountOrderMode = mode
+        save()
+    }
+
+    /// Applies native List move offsets to the saved manual order.
+    /// - Parameters:
+    ///   - offsets: Source row indexes in the displayed account list.
+    ///   - destination: Insertion offset before removing the source rows.
+    public func moveAccounts(fromOffsets offsets: IndexSet, toOffset destination: Int) {
+        let ids = orderedAccounts.map(\.id)
+        guard preferences.accountOrderMode == .manual, !offsets.isEmpty,
+              offsets.allSatisfy({ ids.indices.contains($0) }), (0...ids.count).contains(destination) else { return }
+        let moved = offsets.sorted().map { ids[$0] }
+        var result = ids.enumerated().filter { !offsets.contains($0.offset) }.map(\.element)
+        result.insert(contentsOf: moved, at: destination - offsets.filter { $0 < destination }.count)
+        for (index, id) in preferences.manualAccountOrder.enumerated() where !ids.contains(id) {
+            result.insert(id, at: min(index, result.count))
+        }
+        preferences.manualAccountOrder = result
+        save()
     }
 
     /// Coalesces concurrent requests and keeps last successful readings on failure.
@@ -51,9 +79,24 @@ public final class UsageModel {
         guard !isRefreshing else { return }
         isRefreshing = true
         defer { isRefreshing = false; hasRefreshed = true }
+        repeat {
+            refreshAfterCurrent = false
+            await readAccounts()
+        } while refreshAfterCurrent && !Task.isCancelled
+    }
+
+    private func readAccounts() async {
         do {
             rawAccounts = try await provider.refresh()
             preferences = try provider.loadSettings(preferences)
+            if preferences.accountOrderMode == .manual {
+                let known = Set(preferences.manualAccountOrder)
+                let discovered = rawAccounts.map(\.id).filter { !known.contains($0) }
+                if !discovered.isEmpty {
+                    preferences.manualAccountOrder += discovered
+                    try persistPreferences()
+                }
+            }
             savedPreferences = preferences
             applyPreferences()
             refreshError = nil
@@ -96,7 +139,11 @@ public final class UsageModel {
     }
 
     public func setEnabled(_ isEnabled: Bool, for id: String) {
+        let wasEnabled = accounts.first { $0.id == id }?.isEnabled == true
         updateAccount(id) { $0.isEnabled = isEnabled }
+        guard isEnabled, !wasEnabled, accounts.first(where: { $0.id == id })?.isEnabled == true else { return }
+        refreshAfterCurrent = true
+        Task { [weak self] in await self?.refresh() }
     }
 
     public func setReserve(_ reserveID: String?, for id: String) {
@@ -147,13 +194,17 @@ public final class UsageModel {
         }
     }
 
+    private func persistPreferences() throws {
+        let data = try JSONEncoder().encode(preferences)
+        defaults.set(data, forKey: Self.preferencesKey)
+        savedPreferences = preferences
+    }
+
     private func save() {
         do {
             try provider.saveSettings(preferences, accounts: rawAccounts)
             preferences = try provider.loadSettings(preferences)
-            let data = try JSONEncoder().encode(preferences)
-            defaults.set(data, forKey: Self.preferencesKey)
-            savedPreferences = preferences
+            try persistPreferences()
             settingsError = nil
         } catch {
             preferences = savedPreferences

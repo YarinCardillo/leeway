@@ -10,7 +10,8 @@ struct AccountsSettings: View {
 
     var body: some View {
         Form {
-            ForEach(model.accounts) { account in accountSettings(account) }
+            if !model.accounts.isEmpty { AccountOrderSettings(model: model, strings: strings) }
+            ForEach(model.orderedAccounts) { account in accountSettings(account) }
             if model.accounts.isEmpty { Text(strings.text("No accounts found")) }
             Section {
                 ForEach(model.preferences.addedFolders, id: \.self) { folder in

@@ -118,3 +118,12 @@
 
 "Forecast unavailable" = "Previsione non disponibile";
 "target %@" = "target %@";
+
+"Account order" = "Ordine account";
+"Manual" = "Manuale";
+"Most at risk first" = "Il più a rischio in cima";
+"Drag accounts to change their order." = "Trascina gli account per cambiarne l’ordine.";
+"Reading" = "Lettura in corso";
+"Menu bar account" = "Account nella barra";
+"Most at risk" = "Il più a rischio";
+"Menu row order" = "Ordine righe nel menu";
