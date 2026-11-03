@@ -21,7 +21,7 @@ def write_cask(version, archive, destination):
   homepage "https://github.com/YarinCardillo/leeway"
 
   auto_updates true
-  depends_on macos: ">= :sonoma"
+  depends_on macos: :sonoma
 
   app "Leeway.app"
   binary "#{{appdir}}/Leeway.app/Contents/Helpers/leeway"
