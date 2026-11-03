@@ -1,6 +1,6 @@
 cask "leeway" do
-  version "0.1.1"
-  sha256 "74fd54bedcfd48d14feda225a0dda6e81155d48d63c3cefd90ed7c348f38aee9"
+  version "0.1.2"
+  sha256 "238346bea47172d86787c660c3a4a82a5dceefab447246770b09c601e63aa419"
 
   url "https://github.com/YarinCardillo/leeway/releases/download/v#{version}/Leeway-#{version}.zip"
   name "Leeway"
