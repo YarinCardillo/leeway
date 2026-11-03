@@ -2,6 +2,10 @@
 
 Claudy with a chance of rate limits.
 
+<p align="center">
+  <img src="docs/images/menu.png" width="490" alt="Leeway menu in dark mode showing sample account usage, forecasts and target ticks">
+</p>
+
 Leeway is a macOS menu bar app for Claude Code and Codex. For every account
 signed in on your Mac it shows how much of this week's quota you have used,
 where you will land at the reset, and whether that falls inside the target
@@ -91,7 +95,7 @@ Run `leeway integrations uninstall` if you installed the hooks, then
 
 ## Build from source
 
-Xcode 16 or later with Swift 6. Integration tests need Python 3.10 or later.
+Xcode 26 or later with Swift 6 (for the Icon Composer app icon). Integration tests need Python 3.10 or later.
 
 ```sh
 xcodebuild -project App/Leeway.xcodeproj -scheme Leeway -configuration Debug \
