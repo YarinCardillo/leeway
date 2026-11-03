@@ -365,7 +365,7 @@ The target remains named in text and in the detailed chart.
 
 ### Exception: Target range control
 
-macOS has no native two-handle range slider. The owner explicitly requested one
+macOS has no native two-handle range slider. The design calls for one
 on 2026-11-03. `TargetRangeControl` is one small SwiftUI view with the system
 slider track appearance, system control-background thumbs and accent selection.
 The displayed range is `75-100%` above the control. Bounds move in steps of 5,
@@ -377,7 +377,7 @@ Each handle is separately keyboard focusable and VoiceOver adjustable, labelled
 `Target low` / `Target high` (localized). Tab follows low then high; left/down
 arrows decrease and right/up increase. Opening Settings assigns no focus.
 Pointer input shows no focus ring; keyboard navigation uses a subtle accent
-indicator. This is the one owner-requested exception to native-only Settings
+indicator. This is the one exception to native-only Settings
 controls; native Forms, Toggles, Pickers and menus remain system-owned.
 
 Compact mode loads the supplied Phosphor Core 2.1.1 bold SVG image sets,
@@ -388,7 +388,7 @@ The MIT notice is in THIRD_PARTY_NOTICES and bundled with the app resources.
 The compact status icon is a template asset; the account-row forecast meter uses ImageRenderer.
 
 
-### Owner-requested exception: Neutral account selection
+### Exception: Neutral account selection
 
 The owner changed the requirement on 2026-11-03: account rows must use silver or
 grey instead of accent selection. AppKit has no public per-item selection-colour
