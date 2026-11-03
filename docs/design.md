@@ -4,7 +4,7 @@ Source: `docs/spec.md`. Reference keys identify the interface patterns behind ea
 
 ## Principles
 
-1. **Native macOS components only.** Use NSMenu and native submenus, native selection, grouped Forms, LabeledContent, Pickers, Toggles, system colours and materials. No hand-drawn boxes or borders. Submenu indicators use the system chevron. Account selection uses the owner-requested neutral drawing exception described below. A custom component is allowed only when no native component supplies the required behavior; document that exception here. Controls inherit the system accent, including Multicolour. [A2] [A4]
+1. **Native macOS components only.** Use NSMenu and native submenus, native selection, grouped Forms, LabeledContent, Pickers, Toggles, system colours and materials. No hand-drawn boxes or borders. Submenu indicators use the system chevron. Account selection uses the neutral drawing exception described below. A custom component is allowed only when no native component supplies the required behavior; document that exception here. Controls inherit the system accent, including Multicolour. [A2] [A4]
 2. **A compact native menu.** NSStatusItem presents NSMenu. Attributed menu item titles carry account identity, a meter with numbers, and the reset below. Account rows use native menu item cell measurements, attributed content and an appearance-aware neutral selection; standard commands retain AppKit selection. Native submenus host the accessible Swift Charts detail without a popover arrow. Escape and arrow navigation belong to AppKit. [A1] [A2]
 3. **Words first, colour second.** Status is always written ("Over target"). Colour repeats it, never carries it alone. [A4] [A6]
 4. **Tint is rationed.** Under uses the system accent to signal quota available to use. On target is plain label colour. Over uses systemOrange for amber or systemRed for red. [R9]
@@ -15,9 +15,9 @@ Source: `docs/spec.md`. Reference keys identify the interface patterns behind ea
 
 Mobbin covers iOS and web only, so it holds no macOS menu bar screens (the search "macOS menu bar app dropdown showing usage with a chart" returned nothing). The Mobbin references are used for information patterns (usage meters, reset wording, forecast and limit lines on charts, settings rows), not for macOS chrome. macOS chrome comes from Apple's HIG. Apple's own Battery, Wi-Fi and Focus menus could not be screenshotted in this session (UI scripting of the menu bar is not permitted), so what is said about them below is recalled, marked [unverified], and must be checked side by side in the design review.
 
-### Owner-selected visual references, 2026-11-03
+### Visual references, 2026-11-03
 
-Source: the six Mobbin references selected with the owner and inspected locally. Images remain outside the repository; these are information and layout references, with all chrome supplied by macOS.
+Source: six Mobbin references inspected locally. Images remain outside the repository; these are information and layout references, with all chrome supplied by macOS.
 
 | Key | Source | Applied choice |
 |-|-|-|
@@ -26,11 +26,11 @@ Source: the six Mobbin references selected with the owner and inspected locally.
 | M3 | Mobbin, Searchable, Usage | Numbers carry the hierarchy; account context and reset remain secondary |
 | M4 | Mobbin, Apple Fitness, Build Your Plan grouped rows | Native grouped Form sections with a common left label and trailing control column |
 | M5 | Mobbin, Apple Health, Sleep aligned list | One alignment for every Settings row; folder metadata belongs to its account section |
-| M6 | Mobbin, Apple Fitness, Today's Move Goal | A prominent goal value beside its control. The owner now requests a two-handle Target range in place of the earlier ceiling Stepper |
+| M6 | Mobbin, Apple Fitness, Today's Move Goal | A prominent goal value beside its control. A two-handle Target range replaces the earlier ceiling Stepper |
 
 ## Menu bar title
 
-Compact is the default: a 16 pt Phosphor bold vector template icon, with no text: trend-down for under, target for on target, trend-up for over. Every glyph remains an untinted template. macOS supplies the foreground, including white against a dark menu bar. This owner revision (2026-11-03) replaces verdict tinting in compact mode. General offers Menu bar: Compact / Percentages. Percentages mode uses the text treatment below. VoiceOver retains the full account reading in both modes.
+Compact is the default: a 16 pt Phosphor bold vector template icon, with no text: trend-down for under, target for on target, trend-up for over. Every glyph remains an untinted template. macOS supplies the foreground, including white against a dark menu bar. Since 2026-11-03 this replaces verdict tinting in compact mode. General offers Menu bar: Compact / Percentages. Percentages mode uses the text treatment below. VoiceOver retains the full account reading in both modes.
 
 | Property | Value | Reference |
 |-|-|-|
@@ -68,13 +68,13 @@ Labels use title-style capitalisation, verb first, ellipsis only where more inpu
 | Row content inset | AppKit-owned account measurements. The hosted detail uses 16 pt leading and 14 pt trailing padding, with no selection-state inset | [A2] |
 | Account row height | Native attributed title height, with an inline usage and forecast meter and a muted reset line below | [M2] [M3] |
 | Standard item height | AppKit-owned standard menu item height | [A2] |
-| Selection highlight | Account rows use semantic non-emphasized selection grey, retaining text and meter colours. Standard commands retain native accent selection | Owner revision 2026-11-03 |
+| Selection highlight | Account rows use semantic non-emphasized selection grey, retaining text and meter colours. Standard commands retain native accent selection | Revision 2026-11-03 |
 | Chevron column | 10 pt at the trailing edge of account rows, system chevron, secondary label | [A2] submenu rule |
 | Separator | System separator | [A2] |
 
 ### Account row
 
-Owner revision, 2026-11-03: every meter uses the same 0-100% domain. Usage fills from zero; the forecast segment is clipped at 100% with no extension. Two 1 pt target ticks, each with a contrasting 3 pt outline and extending above and below the track, are drawn last at the configured low and high. Endpoint ticks stay inside the image. Very narrow policy ranges keep at least 5 pt between tick centres, with their exact bounds retained in text. No target band is drawn. The caption and detail chart retain the full forecast values, including overflow.
+Revision 2026-11-03: every meter uses the same 0-100% domain. Usage fills from zero; the forecast segment is clipped at 100% with no extension. Two 1 pt target ticks, each with a contrasting 3 pt outline and extending above and below the track, are drawn last at the configured low and high. Endpoint ticks stay inside the image. Very narrow policy ranges keep at least 5 pt between tick centres, with their exact bounds retained in text. No target band is drawn. The caption and detail chart retain the full forecast values, including overflow.
 
 The account name and status lead. A thin usage and forecast meter sits beside the emphasized usage/forecast numbers. Reset stays visible in a muted trailing line below, for every reading, including stale ones. [M2] [M3]
 
@@ -102,7 +102,7 @@ Opened by native menu tracking, click, Return or Right Arrow as an NSMenu submen
 
 Width 340 pt, leading padding 16 pt and trailing padding 14 pt. Content, top to bottom:
 
-1. **Forecast headline**, account name above the forecast range in SF Pro Display Light 34 pt, with an 18 pt regular secondary `%` on the same baseline. The verdict sits opposite in words and its semantic color. Below, a 10 pt secondary caption names the reset or shows the chart inspection readout. Without a forecast, show measured usage and `used so far`; without a reading, show the typed reading state. Figures remain tabular. Owner choice A, 2026-11-03. [A5]
+1. **Forecast headline**, account name above the forecast range in SF Pro Display Light 34 pt, with an 18 pt regular secondary `%` on the same baseline. The verdict sits opposite in words and its semantic color. Below, a 10 pt secondary caption names the reset or shows the chart inspection readout. Without a forecast, show measured usage and `used so far`; without a reading, show the typed reading state. Figures remain tabular. Chosen 2026-11-03. [A5]
 2. **Chart**, native plot with a 170 pt inspection area (below).
 3. **Facts**, Subheadline 11 pt, two columns, labels and values in label colour, 16 pt rows:
 

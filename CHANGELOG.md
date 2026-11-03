@@ -8,7 +8,6 @@
 - Use one account-order preference in Settings and the menu; the first visible account owns the status item.
 - Migrate former pinned accounts to the first position in Manual order.
 - Keep Settings at a standard size with scrolling inside each tab.
-
 - Keep compact menu bar glyphs monochrome using system template rendering.
 - Preserve readable account colours on neutral menu selection.
 - Use the same 0-100% meter scale for every account with two visible target ticks.
