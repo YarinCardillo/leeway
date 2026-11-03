@@ -36,8 +36,6 @@ final class AccountMenuRow: NSView {
         needsDisplay = true
     }
 
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
-
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         if let hoverTracking { removeTrackingArea(hoverTracking) }

@@ -5,6 +5,7 @@ import SwiftUI
 struct AccountOrderSettings: View {
     let model: UsageModel
     let strings: Localizer
+    @State private var selection = Set<String>()
 
     var body: some View {
         Section {
@@ -27,9 +28,9 @@ struct AccountOrderSettings: View {
     }
 
     private var accountList: some View {
-        List {
+        List(selection: $selection) {
             ForEach(model.orderedAccounts) { account in
-                Text(account.name).moveDisabled(model.preferences.accountOrderMode != .manual)
+                Text(account.name).tag(account.id).moveDisabled(model.preferences.accountOrderMode != .manual)
             }
             .onMove { model.moveAccounts(fromOffsets: $0, toOffset: $1) }
         }
