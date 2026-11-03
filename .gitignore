@@ -1,0 +1,8 @@
+.DS_Store
+.build/
+.swiftpm/
+.superpowers/
+__pycache__/
+.pytest_cache/
+DerivedData/
+xcuserdata/

@@ -1,0 +1,68 @@
+# Example choices only. Copy to ~/.config/leeway/policy.toml and edit.
+# Account ids, paths, target ranges and role models are user policy, never hook rules.
+# Loopback HTTP port used by leeway serve and the installed hooks.
+port = 8799
+# Minutes between readings: 5, 10, 15 or 30.
+poll_minutes = 15
+# Empty means keep the model selected by the Codex CLI.
+codex_model = ""
+
+# Role choices use "model:effort", for example Sonnet with medium effort.
+[roles]
+builder = "sonnet:medium"
+reviewer = "sonnet:medium"
+explorer = "haiku:medium"
+planner = "opus:high"
+evaluator = "opus:high"
+
+[[accounts]]
+# Stable account id, used by reserve_account and project eligibility lists.
+id = "primary"
+# Official CLI that supplies readings: claude or codex.
+provider = "claude"
+# Name shown in the menu and CLI; use a name without personal information.
+label = "Primary"
+# Existing signed-in CLI profile folder; Leeway does not copy credentials.
+config_dir = "~/.claude"
+# False hides this account from readings and steering.
+enabled = true
+# Weekly percentage agents should stay below, from 50 to 100.
+target_low = 75
+target_high = 100
+# Account id to try if this account is above its target range.
+reserve_account = "reserve"
+# warn allows with a warning, switch tries the reserve, block refuses work.
+over_target = "switch"
+
+[[accounts]]
+id = "reserve"
+provider = "claude"
+label = "Reserve"
+config_dir = "~/.claude-reserve"
+enabled = true
+target_low = 75
+target_high = 100
+over_target = "warn"
+
+[[accounts]]
+id = "code"
+provider = "codex"
+label = "Codex"
+config_dir = "~/.codex"
+enabled = true
+target_low = 75
+target_high = 100
+over_target = "block"
+
+# Eligible accounts, in order, when no project-specific rule matches.
+[default]
+claude = ["primary", "reserve"]
+codex = ["code"]
+
+# Optional project-specific account eligibility.
+[[projects]]
+name = "Example"
+# Repository folders, including their descendants, that use this rule.
+paths = ["~/Projects/example"]
+claude = ["primary", "reserve"]
+codex = ["code"]
