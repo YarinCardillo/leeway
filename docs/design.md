@@ -36,7 +36,7 @@ Compact is the default: a 16 pt Phosphor bold vector template icon, with no text
 |-|-|-|
 | Height available | 24 pt | [A1] |
 | Content | `name used% → forecast%`, for example `Work 62% → 84%` | spec 6, [R8] |
-| Account shown | The pinned account, else the most at risk (ranking: red over, amber over, under, on target; ties by higher forecast) | spec 6 |
+| Account shown | The first enabled account in the shared Account order, even without a reading. Risk-first ranking: red over, amber over, under, on target; ties by higher forecast | spec 6 |
 | Forecast shown | The higher of the two projections | title only; verdict compares both bounds |
 | Font | System menu bar font, 13 pt regular, tabular figures | [A3] |
 | Name length | Up to 14 characters, then tail truncation with an ellipsis. Account names are free text, so the title never grows unbounded | [A1] (menus can be truncated when space is tight) |
@@ -49,10 +49,10 @@ The title width must not jitter on refresh: tabular figures keep `62%` and `71%`
 
 ### Structure, top to bottom
 
-1. One row per enabled account, most at risk first, then alphabetical.
+1. One row per enabled account in the shared Account order: risk-first or Manual.
 2. Separator.
 3. Muted disabled line: `Updated 2 min ago` (relative, localised). Shows the age of the newest successful reading across accounts. [R1] [R2]
-4. `Show Most at Risk` with a checkmark while in automatic mode.
+4. `Account order` submenu with the two checked choices `Most at risk first` and `Manual`, synchronized with Settings.
 5. `Refresh Now` with Command-R.
 6. `Settings…` with Command-comma.
 7. Separator.
@@ -65,7 +65,7 @@ Labels use title-style capitalisation, verb first, ellipsis only where more inpu
 | Property | Value | Reference |
 |-|-|-|
 | Menu width | 340 pt minimum; native AppKit sizing accommodates localized facts without truncating the reset | [A2] |
-| Row content inset | AppKit-owned. Detail leading padding is obtained from the native pin item cell titleRect, so it follows the current OS instead of a copied value | [A2] |
+| Row content inset | AppKit-owned account measurements. The hosted detail uses 16 pt leading and 14 pt trailing padding, with no selection-state inset | [A2] |
 | Account row height | Native attributed title height, with an inline usage and forecast meter and a muted reset line below | [M2] [M3] |
 | Standard item height | AppKit-owned standard menu item height | [A2] |
 | Selection highlight | Account rows use semantic non-emphasized selection grey, retaining text and meter colours. Standard commands retain native accent selection | Owner revision 2026-11-03 |
@@ -98,9 +98,9 @@ Hover starts only when the pointer is inside the row. Click, Return or Right Arr
 
 ### Chart submenu
 
-Opened by native menu tracking, click, Return or Right Arrow as an NSMenu submenu beside the account row. Escape returns to the parent menu. The chart and facts are a hosted custom item; Show in Menu Bar is a standard NSMenuItem with the native checkmark and text inset. [A5]
+Opened by native menu tracking, click, Return or Right Arrow as an NSMenu submenu beside the account row. Escape returns to the parent menu. The chart and facts are the only hosted custom item. There is no account-selection command in the detail. [A5]
 
-Width 340 pt. The content leading inset is measured from the native pin command with NSMenuItemCell.titleRect. Content, top to bottom:
+Width 340 pt, leading padding 16 pt and trailing padding 14 pt. Content, top to bottom:
 
 1. **Usage and headline**, a large used percentage followed by a Callout forecast range and the localized weekly period. The headline reads: `Lands between 84% and 97% on Tue 5:00 AM`. Descriptive text above a chart, in the manner of a prediction sentence. [R8] [A5]
 2. **Chart**, native plot with a 170 pt inspection area (below).
@@ -117,7 +117,6 @@ Width 340 pt. The content leading inset is measured from the native pin command 
    Rows with unknown values are omitted, including five-hour usage and recent pace before a qualifying six-hour history. The obsolete Inspect Readings hint and submenu are absent.
 
    This follows the label-left, value-right rows of [R3] and the "x% used, resets" phrasing of [R1] and [R2].
-4. Separator, then `Show in Menu Bar` with a checkmark when this account is pinned. [A2]
 
 ### Chart
 
@@ -159,7 +158,7 @@ Each state is one concrete treatment, not a spinner.
 | **Loading, refresh** | Unchanged | Rows unchanged, the age line reads `Updating`. Refresh Now dimmed. No row flicker |
 | **Stale** (latest reading failed, last good kept) | Unchanged, computed from the last good reading | Status word unchanged. Reset remains in the right column. Only readings older than twice the polling interval gain a compact amber age after the usage numbers, with a full VoiceOver reading-age label. A failed attempt alone does not add age. Menu timestamps update every 30 seconds while open. |
 | **Error, no reading yet** | Symbol only | Status word `No reading`. Facts line carries the reason, one of: `Claude CLI not found`, `Not signed in, run claude to sign in`, `Timed out`, `Unexpected output` |
-| **No accounts** | Symbol only | A single dimmed item `No accounts found`, a muted second line `Sign in with Claude Code or Codex, then choose Refresh Now`, then `Settings…` and `Quit Leeway`. The Refresh Now and Show Most at Risk items stay visible and dimmed [A1] |
+| **No accounts** | Symbol only | A single dimmed item `No accounts found`, a muted second line `Sign in with Claude Code or Codex, then choose Refresh Now`, then `Settings…` and `Quit Leeway`. Refresh Now stays visible and dimmed; Account order remains available [A1] |
 | **All accounts disabled** | Symbol only | Same as No accounts, second line `All accounts are turned off in Settings` |
 
 Enabling an account starts a refresh immediately. If another read is in flight, a follow-up read includes the newly enabled account. When a reading supplies a reason, display it. The current core otherwise reports only staleness, so use the localized instruction to check CLI sign-in and choose Refresh Now. A first reading in progress shows only native Reading usage text, with no sign-in hint. Leeway never logs in for the user.
@@ -179,16 +178,19 @@ The standard macOS Settings window, opened with Command-comma, toolbar tab style
 
 ### Accounts tab
 
-Two separate pickers lead the pane. Menu bar account chooses Most at risk or a
-pinned account, using the same AppPreferences.pinnedID and model.pin action as
-the menu. Changes update both immediately. Menu row order chooses Manual or
-Most at risk first (default), independently of the status-item account.
+One Account order picker leads the pane: Most at risk first (default) or Manual.
+It reads and writes AppPreferences.accountOrderMode, shared with the menu's
+Account order submenu. The status item shows the first enabled account in this
+same order. The owner replaced the previous separate pin/order model on
+2026-11-03. A legacy pin becomes the first Manual ID; the old field is decode-only
+and is never written again. Existing Manual order without a pin is preserved.
 A native SwiftUI List below it shows the current names and supports native
-drag and drop through onMove in Manual mode. The setting and stable account IDs
+drag and drop through onMove in Manual mode. An initially empty, UI-only
+selection binding enables native row selection and drag initiation on macOS. The setting and stable account IDs
 are stored in presentation preferences. Failed saves restore the previous order.
 Unavailable IDs retain their saved positions, and newly discovered accounts
 append. Existing grouped account controls follow the same order below the list.
-This ordering is independent of Show Most at Risk and account pinning in the menu bar.
+There is no separate status-account picker or detail pin command.
 
 One settings group per discovered account (two directories that are the same account appear once, spec 1). The Form scrolls within the native window.
 
@@ -271,7 +273,6 @@ Every status is spoken as words, numbers as numbers, never colour names.
 | Error row | `Work, no reading` | Value: the reason in full, for example `Claude CLI not found` |
 | Age line | `Last updated` | Value: `2 minutes ago` |
 | Chart | `Weekly usage for Work` | Value: the headline sentence. Provides an audio graph descriptor with series Used, Forecast week pace, Forecast last 24 hours, and Target low and Target high as reference lines [A5] [A6] |
-| Show in Menu Bar | `Show in Menu Bar` | Value: `On` or `Off` |
 | Settings name field | `Account name` | Value: the name |
 | Settings target handles | `Target low` / `Target high` | Independently adjustable values in percent; Tab visits low then high, arrow keys step by 5 |
 | Settings reserve | `Reserve account for Work` | Value: `None` or the account name |
@@ -289,7 +290,9 @@ Strings exist in English and Italian. The layout must survive Italian lengths. S
 | On target | Nell'intervallo |
 | Over target | Sopra l'intervallo |
 | Refresh Now | Aggiorna ora |
-| Show Most at Risk | Mostra il più a rischio |
+| Account order | Ordine degli account |
+| Most at risk first | Il più a rischio prima |
+| Manual | Manuale |
 | 62% now, 70-84% at reset, target 75-100% | 62% ora, 70-84% al reset, target 75-100% |
 | Resets Tue 5:00 AM | Reset mar 05:00 |
 | Account name | Nome account |
@@ -302,7 +305,7 @@ Times and dates come from the locale, never from string templates. Percent sign 
 2. **Early blocking.** Over is amber up to 12 hours between exhaustion and reset, red above 12. Without an exhaustion prediction it stays amber, with unknown early hours. Measured weekly usage at 95 does not override the interval verdict; five-hour blocking belongs to advisor policy.
 3. **Native menu drawing.** NSMenuItem attributed titles support multiline text and a meter attachment. AccountMenuRow measures the content with NSMenuItemCell, draws the attributed title and uses a neutral selection background, an explicit owner revision on 2026-11-03. NSMenu retains tracking, type selection, keyboard navigation and submenu placement. Commands use ordinary NSMenuItem drawing. Offscreen tests cover multiline sizing, semantic colours and target tick visibility.
 4. **Hiding the extra.** The HIG asks that people, not the app, decide whether the extra is shown, and suggests a second entry point such as a Dock menu. The spec has no "show in menu bar" setting. Worth deciding before release. [A1]
-5. **Apple menu measurements.** AppKit owns standard command selection geometry. The detail reads its leading inset from the native pin command cell on the current OS; an offscreen probe on this host returned 26 pt. No inferred macOS 14 selection radius or inset is hardcoded.
+5. **Apple menu measurements.** AppKit owns standard command selection geometry. Account rows use native cell measurements, while the chart detail has a single stable content inset with no pin-state column.
 
 ## References
 
@@ -344,7 +347,7 @@ Mobbin (web and iOS, used for information patterns only):
 
 ## Native component exceptions and remaining runtime checks
 
-The domain-specific Swift Charts view and its textual facts are hosted custom content. Apple supplies the marks, axes, cursor rule and audio graph; there is no standard NSMenu item that represents a weekly quota forecast. NSHostingView embeds this content in the native submenu. Its leading inset matches the native pin command. The chart supports VoiceOver adjustment and its native audio graph.
+The domain-specific Swift Charts view and its textual facts are hosted custom content. Apple supplies the marks, axes, cursor rule and audio graph; there is no standard NSMenu item that represents a weekly quota forecast. NSHostingView embeds this content in the native submenu. Its leading inset is stable because the detail has no native command or state column. The chart supports VoiceOver adjustment and its native audio graph.
 
 AppKit owns the status item and standard Settings window because the required native NSMenu hierarchy must coexist with hosted Charts content. SwiftUI grouped Forms and LabeledContent own Settings rows; the native Settings window rejects automatic responder changes until the first user click or key event, and resets its native scroll containers to the top whenever opened. Offscreen tests cover both rules. The only owner-requested custom Settings control is the Target range described below.
 
@@ -392,7 +395,8 @@ attachment directly, with a system chevron symbol for the submenu. A rounded neu
 unemphasizedSelectedContentBackgroundColor blended 12% toward labelColor, with a
 5 pt inset and corner radius. A native tracking area updates drawing on pointer
 entry and exit; it never intercepts clicks or replaces native submenu tracking.
-The view does not intercept clicks; NSMenu owns pointer and keyboard tracking,
+The row participates in native hit testing so pointer events reach its tracking
+area; NSMenu owns command dispatch, keyboard tracking,
 submenus and the menu item's accessibility. Caption, verdict and meter colours
 remain unchanged. Refresh Now, Settings and Quit have no custom view.
 

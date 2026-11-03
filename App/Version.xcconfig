@@ -1,5 +1,5 @@
 // Release source of truth. Increase the build number for every distributed build.
-LEEWAY_RELEASE_VERSION = 0.1.2
+LEEWAY_RELEASE_VERSION = 0.1.1
 MARKETING_VERSION = $(LEEWAY_RELEASE_VERSION)
 CURRENT_PROJECT_VERSION = 3
 LEEWAY_UPDATE_FEED_URL = https:/$()/github.com/YarinCardillo/leeway/releases/latest/download/appcast.xml

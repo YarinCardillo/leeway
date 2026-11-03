@@ -1,15 +1,13 @@
 # Changelog
 
-## 0.1.2
+## 0.1.1
 
 - Read newly enabled accounts immediately and retain typed source failure messages.
 - Show visible neutral account selection on pointer hover in both appearances.
 - Choose manual account order with native drag and drop, or most at risk first.
-- Share pinned/most-at-risk status selection between the menu and Settings.
-- Keep status selection independent of menu row order.
+- Use one account-order preference in Settings and the menu; the first visible account owns the status item.
+- Migrate former pinned accounts to the first position in Manual order.
 - Keep Settings at a standard size with scrolling inside each tab.
-
-## 0.1.1
 
 - Keep compact menu bar glyphs monochrome using system template rendering.
 - Preserve readable account colours on neutral menu selection.
