@@ -34,3 +34,8 @@ Cost in currency, token counts per model, any server, any account login inside L
 ## Quality bar
 
 Repo small and documented (README with install, privacy, how readings work, agent integration; CHANGELOG; MIT license). Every rule above has a test. Code and copy pass antislop/unslop review, accessibility review (VoiceOver labels, contrast, keyboard), design review side by side with the references in `docs/design.md`, and an independent evaluator that runs the real app. No private names (employers, colleagues, internal hosts) anywhere in the repo.
+
+
+## Temporary detail title studies
+
+Owner revision, 2026-11-03: compare four native SF Pro title treatments before choosing the final one. A uses Light at about 34 pt, a small secondary percent and a smaller caption. B uses Expanded Regular with a reduced percent. C uses Compressed Semibold, tall and narrow. D uses a localized forecast sentence with the range in the verdict color and medium weight. All use tabular figures, without monospace or alternate zeros. A temporary debug preference selects A through D; the existing title remains the default until the owner chooses. Remove the other variants and the preference after that choice.

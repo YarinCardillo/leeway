@@ -121,6 +121,15 @@ extension Localizer {
         return (value, account.reset.map { format("at reset %@", date($0)) } ?? text("at reset"))
     }
 
+    /// A compact forecast sentence for the temporary narrative header study.
+    func forecastSentence(_ account: AccountUsage) -> String? {
+        guard account.weeklyUsed != nil, account.lowerForecast != nil,
+              account.upperForecast != nil, let forecast = forecastHeadline(account) else { return nil }
+        guard let reset = account.reset else { return format("At reset you reach %@", forecast.value) }
+        let weekday = reset.formatted(.dateTime.weekday(.wide).locale(locale))
+        return format("At the %@ reset, you reach %@", weekday, forecast.value)
+    }
+
     func targetRange(_ account: AccountUsage) -> String {
         "\(number(account.targetLow))-\(percent(account.targetHigh))"
     }

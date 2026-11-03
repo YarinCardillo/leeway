@@ -407,3 +407,10 @@ Phosphor target SVG as a foreground layer. It contains no baked squircle, outer
 padding or shadow. Xcode compiles the document for macOS 26 and generates the
 fallback icon for macOS 14 and 15. The former raster app icon is no longer an
 input. See Apple's [Icon Composer documentation](https://developer.apple.com/documentation/xcode/creating-your-app-icon-using-icon-composer).
+
+
+### Temporary detail title comparison, owner revision 2026-11-03
+
+Compare A (SF Pro Light 34 pt, secondary 18 pt percent, 10 pt caption), B (SF Pro Expanded Regular 32 pt, 17 pt percent), C (SF Pro Compressed Semibold 40 pt, 20 pt percent), and D (17 pt localized forecast sentence with only its range in the verdict color and Medium weight). Figures remain tabular. The temporary debug preference selects the study; the existing default remains until the owner's choice.
+
+The owner selected iOS references for typography and information hierarchy: [Opal](https://mobbin.com/screens/62769965-9c74-417e-ae28-deb6c2aba10e) places a colored value inside a sentence, [Instagram time management](https://mobbin.com/screens/33dbf88a-43a1-4344-ad20-cc74a0093a61) pairs a regular large metric with a compact label, and [YouTube Studio](https://mobbin.com/screens/39616b3b-ef06-43af-a3b1-f8584c161c12) puts values below a clean chart. These inform the native macOS studies rather than replacing native menu layout.
