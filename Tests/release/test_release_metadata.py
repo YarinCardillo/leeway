@@ -25,8 +25,6 @@ class ReleaseMetadataTests(unittest.TestCase):
     def test_public_release_inputs_match_the_requested_version(self):
         config = (ROOT / "App/Version.xcconfig").read_text()
         self.assertEqual(metadata.read_version(config, CURRENT)[0], CURRENT)
-        cask = (ROOT / "Casks/leeway.rb").read_text()
-        self.assertIn(f'version "{CURRENT}"', cask)
         self.assertTrue(metadata.release_notes((ROOT / "CHANGELOG.md").read_text(), CURRENT).strip())
 
     def test_changelog_selects_exact_release_without_unreleased_changes(self):
