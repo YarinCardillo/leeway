@@ -1,38 +1,51 @@
 {
-  "fill": {
-    "solid": "srgb:0.17000,0.17000,0.17000,1.00000"
+  "fill" : {
+    "linear-gradient" : [
+      "srgb:0.37255,0.49020,0.41961,1.00000",
+      "srgb:0.24706,0.35294,0.29020,1.00000"
+    ],
+    "orientation" : {
+      "start" : {
+        "x" : 0.5,
+        "y" : 0
+      },
+      "stop" : {
+        "x" : 0.5,
+        "y" : 1
+      }
+    }
   },
-  "groups": [
+  "groups" : [
     {
-      "layers": [
+      "layers" : [
         {
-          "blend-mode": "normal",
-          "fill": "none",
-          "glass": false,
-          "hidden": false,
-          "image-name": "target.svg",
-          "name": "Target",
-          "opacity": 1,
-          "position": {
-            "scale": 2.8,
-            "translation-in-points": [
+          "blend-mode" : "normal",
+          "fill" : "none",
+          "glass" : false,
+          "hidden" : false,
+          "image-name" : "wordmark.svg",
+          "name" : "Leeway",
+          "opacity" : 1,
+          "position" : {
+            "scale" : 1,
+            "translation-in-points" : [
               0,
               0
             ]
           }
         }
       ],
-      "shadow": {
-        "kind": "neutral",
-        "opacity": 0.5
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
       },
-      "translucency": {
-        "enabled": false,
-        "value": 0.5
+      "translucency" : {
+        "enabled" : false,
+        "value" : 0.5
       }
     }
   ],
-  "supported-platforms": {
-    "squares": "shared"
+  "supported-platforms" : {
+    "squares" : "shared"
   }
 }
