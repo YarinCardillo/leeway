@@ -1,6 +1,6 @@
 import Foundation
 
-/// Menu row ordering is independent of the account selected for the status item.
+/// One order for all account rows; the first visible account owns the status item.
 public enum AccountOrderMode: String, Codable, Sendable, CaseIterable {
     case manual
     case mostAtRisk

@@ -3,7 +3,7 @@ import XCTest
 
 @MainActor
 final class AccountOrderingTests: XCTestCase {
-    func testManualMove_PersistsAndDoesNotChangeAutomaticStatusSelection() async {
+    func testManualMove_PersistsAndSelectsTheFirstMenuAccount() async {
         let defaults = UserDefaults(suiteName: UUID().uuidString)!
         let model = UsageModel(provider: TestProvider(), defaults: defaults)
         await model.refresh()
@@ -11,8 +11,6 @@ final class AccountOrderingTests: XCTestCase {
         model.setAccountOrderMode(.manual)
         model.moveAccounts(fromOffsets: [1], toOffset: 0)
         XCTAssertEqual(model.enabledAccounts.map(\.id), ["low", "high"])
-        XCTAssertEqual(model.selectedAccount?.id, "high")
-        model.pin("low")
         XCTAssertEqual(model.selectedAccount?.id, "low")
         await model.refresh()
         XCTAssertEqual(model.enabledAccounts.map(\.id), ["low", "high"])

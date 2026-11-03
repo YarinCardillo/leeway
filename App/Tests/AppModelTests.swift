@@ -3,11 +3,12 @@ import XCTest
 
 @MainActor
 final class AppModelTests: XCTestCase {
-    func testRefresh_MostAtRiskIsSelected_UnlessPinned() async {
+    func testRefresh_FirstOrderedEnabledAccountIsSelected() async {
         let model = makeModel()
         await model.refresh()
         XCTAssertEqual(model.selectedAccount?.id, "high")
-        model.pin("low")
+        model.setAccountOrderMode(.manual)
+        model.moveAccounts(fromOffsets: [1], toOffset: 0)
         XCTAssertEqual(model.selectedAccount?.id, "low")
         model.setEnabled(false, for: "low")
         XCTAssertEqual(model.selectedAccount?.id, "high")
@@ -99,10 +100,10 @@ final class TestProvider: UsageProvider {
 
 @MainActor
 final class MissingUsageTests: XCTestCase {
-    func testUnknownUsage_HasNoForecastOrTitleSelection() async {
+    func testUnknownUsage_FirstAccountStillOwnsTheStatusItem() async {
         let model = UsageModel(provider: MissingProvider(), defaults: UserDefaults(suiteName: UUID().uuidString)!)
         await model.refresh()
-        XCTAssertNil(model.selectedAccount)
+        XCTAssertEqual(model.selectedAccount?.id, "unknown")
         XCTAssertNil(model.accounts.first?.upperForecast)
         XCTAssertNil(model.accounts.first?.lowerForecast)
     }

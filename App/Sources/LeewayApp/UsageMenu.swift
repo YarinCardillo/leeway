@@ -13,6 +13,7 @@ final class UsageMenu: NSObject, NSMenuDelegate {
     private static let contentWidth: CGFloat = 290
     private static let lineGap: CGFloat = 3
     private var accountItems: [String: NSMenuItem] = [:]
+    private var orderItems: [AccountOrderMode: NSMenuItem] = [:]
     private var highlightedID: String?
     private var highlightGeneration = 0
     private weak var rootMenu: NSMenu?
@@ -40,6 +41,7 @@ final class UsageMenu: NSObject, NSMenuDelegate {
         guard menu === rootMenu else { return }
         menu.removeAllItems()
         accountItems.removeAll()
+        orderItems.removeAll()
         highlightedID = nil
         highlightGeneration += 1
         for account in model.enabledAccounts { menu.addItem(accountItem(account)) }
@@ -111,7 +113,7 @@ final class UsageMenu: NSObject, NSMenuDelegate {
         withObservationTracking {
             _ = model.accounts
             _ = model.isRefreshing
-            _ = model.preferences.pinnedID
+            _ = model.preferences.accountOrderMode
         } onChange: { [weak self] in
             Task { @MainActor in
                 guard let self else { return }
@@ -132,9 +134,8 @@ final class UsageMenu: NSObject, NSMenuDelegate {
     }
 
     func updateReadingTimes() {
-        rootMenu?.items.first { $0.action == #selector(showAutomatic) }?.state = model.preferences.pinnedID == nil ? .on : .off
-        for (id, item) in accountItems {
-            item.submenu?.items.last?.state = model.preferences.pinnedID == id ? .on : .off
+        for (mode, item) in orderItems {
+            item.state = model.preferences.accountOrderMode == mode ? .on : .off
         }
         for account in model.enabledAccounts {
             guard let item = accountItems[account.id] else { continue }
@@ -227,19 +228,13 @@ final class UsageMenu: NSObject, NSMenuDelegate {
         let menu = NSMenu(title: account.name)
         menu.autoenablesItems = false
         menu.delegate = self
-        let pin = command("Show in Menu Bar", action: #selector(pinAccount(_:)))
-        pin.representedObject = account.id
-        pin.state = model.preferences.pinnedID == account.id ? .on : .off
-        let insets = DetailInsets.standard
         let selection = ChartSelection()
         let content = NSMenuItem()
-        let hosting = NSHostingView(rootView: AccountDetail(account: account, model: model, strings: strings, selection: selection, insets: insets)
+        let hosting = NSHostingView(rootView: AccountDetail(account: account, model: model, strings: strings, selection: selection)
             .environment(\.locale, strings.locale))
         hosting.setFrameSize(hosting.fittingSize)
         content.view = hosting
         menu.addItem(content)
-        menu.addItem(.separator())
-        menu.addItem(pin)
         return menu
     }
 
@@ -257,10 +252,7 @@ final class UsageMenu: NSObject, NSMenuDelegate {
     }
 
     private func addCommands(to menu: NSMenu) {
-        let automatic = command("Show Most at Risk", action: #selector(showAutomatic))
-        automatic.state = model.preferences.pinnedID == nil ? .on : .off
-        automatic.isEnabled = !model.enabledAccounts.isEmpty
-        menu.addItem(automatic)
+        menu.addItem(accountOrderItem())
         let refresh = command("Refresh Now", action: #selector(refresh), key: "r")
         refresh.isEnabled = !model.isRefreshing
         menu.addItem(refresh)
@@ -275,12 +267,25 @@ final class UsageMenu: NSObject, NSMenuDelegate {
         return item
     }
 
-    @objc private func pinAccount(_ sender: NSMenuItem) {
-        guard let id = sender.representedObject as? String else { return }
-        model.pin(model.preferences.pinnedID == id ? nil : id)
-        sender.state = model.preferences.pinnedID == id ? .on : .off
+    private func accountOrderItem() -> NSMenuItem {
+        let item = NSMenuItem(title: strings.text("Account order"), action: nil, keyEquivalent: "")
+        let choices = NSMenu()
+        for mode in [AccountOrderMode.mostAtRisk, .manual] {
+            let label = mode == .mostAtRisk ? "Most at risk first" : "Manual"
+            let choice = command(label, action: #selector(setAccountOrder(_:)))
+            choice.representedObject = mode.rawValue
+            choice.state = model.preferences.accountOrderMode == mode ? .on : .off
+            choices.addItem(choice)
+            orderItems[mode] = choice
+        }
+        item.submenu = choices
+        return item
     }
-    @objc private func showAutomatic() { model.pin(nil) }
+
+    @objc private func setAccountOrder(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String, let mode = AccountOrderMode(rawValue: raw) else { return }
+        model.setAccountOrderMode(mode)
+    }
     @objc private func refresh() { Task { await model.refresh() } }
     @objc private func settings() { openSettings() }
     @objc private func quit() { NSApplication.shared.terminate(nil) }

@@ -6,7 +6,6 @@ struct AccountDetail: View {
     let model: UsageModel
     let strings: Localizer
     let selection: ChartSelection
-    let insets: DetailInsets
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -22,7 +21,7 @@ struct AccountDetail: View {
                 }
             }.font(.subheadline)
         }
-        .padding(.leading, insets.leading(isPinned: model.preferences.pinnedID == account.id))
+        .padding(.leading, 16)
         .padding(.trailing, 14).padding(.vertical, 10).frame(width: 340)
     }
 

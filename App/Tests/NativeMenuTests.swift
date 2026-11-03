@@ -15,10 +15,9 @@ final class NativeMenuTests: XCTestCase {
         XCTAssertNotNil(row.view)
         XCTAssertNotNil(row.submenu)
         XCTAssertTrue(row.attributedTitle!.string.contains("resets"))
-        let pin = row.submenu!.items.last!
-        XCTAssertNil(pin.view)
-        XCTAssertEqual(pin.title, "Show in Menu Bar")
-        XCTAssertNotNil(pin.action)
+        XCTAssertEqual(row.submenu!.items.count, 1)
+        XCTAssertNotNil(row.submenu!.items[0].view)
+        XCTAssertNil(row.submenu!.items[0].action)
     }
 }
 
@@ -248,7 +247,7 @@ extension NativeMenuTests {
         builder.menuNeedsUpdate(menu)
         for name in [NSAppearance.Name.aqua, .darkAqua] {
             NSAppearance(named: name)!.performAsCurrentDrawingAppearance {
-                for row in menu.items where row.hasSubmenu {
+                for row in menu.items where row.view is AccountMenuRow {
                     let original = row.attributedTitle!
                     let attachment = meter(in: row)
                     builder.menu(menu, willHighlight: row)
@@ -367,26 +366,32 @@ extension NativeMenuTests {
         XCTAssertFalse(view.isHighlighted)
     }
 
-    func testStatusAccount_MenuAndSettingsUseOnePreferenceIndependentOfRowOrder() async throws {
+    func testAccountOrder_MenuAndSettingsShareOrderAndFirstAccount() async throws {
         let model = UsageModel(provider: TestProvider(), defaults: UserDefaults(suiteName: UUID().uuidString)!)
         await model.refresh()
-        model.setAccountOrderMode(.manual)
-        model.moveAccounts(fromOffsets: [1], toOffset: 0)
         let builder = UsageMenu(model: model, openSettings: {})
         let menu = builder.makeMenu()
         builder.menuNeedsUpdate(menu)
         builder.menuWillOpen(menu)
         defer { builder.menuDidClose(menu) }
-        let automatic = try XCTUnwrap(menu.items.first { $0.title == "Show Most at Risk" })
-        model.pin("low") // The Settings picker uses the same action and preference.
-        for _ in 0..<100 where automatic.state != .off { await Task.yield() }
+        let choices = try XCTUnwrap(menu.items.first { $0.title == "Account order" }?.submenu)
+        let automatic = try XCTUnwrap(choices.items.first { $0.title == "Most at risk first" })
+        let manual = try XCTUnwrap(choices.items.first { $0.title == "Manual" })
+        model.setAccountOrderMode(.manual)
+        model.moveAccounts(fromOffsets: [1], toOffset: 0)
+        for _ in 0..<100 where manual.state != .on { await Task.yield() }
+        XCTAssertEqual(manual.state, .on)
         XCTAssertEqual(automatic.state, .off)
-        XCTAssertEqual(model.preferences.pinnedID, "low")
-        menu.performActionForItem(at: menu.index(of: automatic))
-        XCTAssertNil(model.preferences.pinnedID)
+        XCTAssertEqual(model.selectedAccount?.id, "low")
+        choices.performActionForItem(at: choices.index(of: automatic))
+        XCTAssertEqual(model.preferences.accountOrderMode, .mostAtRisk)
         XCTAssertEqual(model.selectedAccount?.id, "high")
-        XCTAssertEqual(model.enabledAccounts.map(\.id), ["low", "high"])
+        choices.performActionForItem(at: choices.index(of: manual))
+        XCTAssertEqual(model.preferences.accountOrderMode, .manual)
+        XCTAssertEqual(model.selectedAccount?.id, "low")
+        XCTAssertEqual(model.enabledAccounts.first?.id, model.selectedAccount?.id)
     }
+
 }
 
 @MainActor

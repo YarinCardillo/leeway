@@ -21,11 +21,15 @@ public final class UsageModel {
     public init(provider: any UsageProvider, defaults: UserDefaults = .standard) {
         self.provider = provider
         self.defaults = defaults
-        let stored = defaults.data(forKey: Self.preferencesKey)
+        let persisted = defaults.data(forKey: Self.preferencesKey)
+        let stored = persisted
             .flatMap { try? JSONDecoder().decode(AppPreferences.self, from: $0) } ?? AppPreferences()
         var loaded = stored
         var failure: String?
-        do { loaded = try provider.loadSettings(stored) }
+        do {
+            loaded = try provider.loadSettings(stored)
+            if persisted != nil { defaults.set(try JSONEncoder().encode(loaded), forKey: Self.preferencesKey) }
+        }
         catch { failure = "Could not read settings from ~/.config/leeway/policy.toml. Check that the file is readable and valid TOML." }
         preferences = loaded
         savedPreferences = loaded
@@ -40,13 +44,9 @@ public final class UsageModel {
 
     public var hasDefaultAccountNames: Bool { accounts.contains(where: \.hasDefaultName) }
 
-    public var selectedAccount: AccountUsage? {
-        let candidates = accounts.filter { $0.isEnabled && $0.weeklyUsed != nil }
-        return candidates.first { $0.id == preferences.pinnedID }
-            ?? candidates.sorted(by: AccountOrderMode.higherRisk).first
-    }
+    public var selectedAccount: AccountUsage? { enabledAccounts.first }
 
-    /// Changes menu row ordering without changing automatic status-item selection.
+    /// Changes the shared order of menu rows and the account shown by the status item.
     public func setAccountOrderMode(_ mode: AccountOrderMode) {
         guard mode != preferences.accountOrderMode else { return }
         if mode == .manual, preferences.manualAccountOrder.isEmpty {
@@ -120,7 +120,6 @@ public final class UsageModel {
     }
 
     public func stopPolling() { pollingTask?.cancel(); pollingTask = nil }
-    public func pin(_ id: String?) { preferences.pinnedID = id; save() }
 
     public func rename(_ name: String, for id: String) {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)

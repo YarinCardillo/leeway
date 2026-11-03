@@ -8,7 +8,6 @@ struct AccountOrderSettings: View {
 
     var body: some View {
         Section {
-            statusAccountPicker
             orderPicker
             accountList
             if model.preferences.accountOrderMode == .manual {
@@ -18,19 +17,8 @@ struct AccountOrderSettings: View {
         }
     }
 
-    private var statusAccountPicker: some View {
-        Picker(strings.text("Menu bar account"), selection: Binding(
-            get: { model.preferences.pinnedID }, set: { model.pin($0) }
-        )) {
-            Text(strings.text("Most at risk")).tag(String?.none)
-            ForEach(model.orderedAccounts) { account in
-                Text(account.name).tag(Optional(account.id)).disabled(!account.isEnabled)
-            }
-        }
-    }
-
     private var orderPicker: some View {
-        Picker(strings.text("Menu row order"), selection: Binding(
+        Picker(strings.text("Account order"), selection: Binding(
             get: { model.preferences.accountOrderMode }, set: { model.setAccountOrderMode($0) }
         )) {
             Text(strings.text("Manual")).tag(AccountOrderMode.manual)
