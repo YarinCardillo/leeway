@@ -6,8 +6,6 @@ struct AccountDetail: View {
     let model: UsageModel
     let strings: Localizer
     let selection: ChartSelection
-    @AppStorage("debug.detailHeaderVariant") private var debugVariant = "standard"
-    private var variant: DetailHeaderVariant { DetailHeaderVariant(rawValue: debugVariant) ?? .standard }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -32,13 +30,9 @@ struct AccountDetail: View {
         return VStack(alignment: .leading, spacing: 2) {
             Text(account.name).font(.subheadline).foregroundStyle(.secondary)
             if let forecast = strings.forecastHeadline(account) {
-                if variant == .d, let sentence = strings.forecastSentence(account) {
-                    narrativeTitle(sentence, value: forecast.value, tint: account.verdictTint)
-                } else {
-                    forecastTitle(forecast.value, account: account)
-                }
+                forecastTitle(forecast.value, account: account)
                 Text(selection.date.flatMap { account.chartReadout(at: $0) }.map(strings.chartReadout) ?? forecast.caption)
-                    .font(variant == .a ? .system(size: 10) : .caption).foregroundStyle(.secondary)
+                    .font(.system(size: 10)).foregroundStyle(.secondary)
                     .lineLimit(2).frame(height: 28, alignment: .topLeading)
             } else {
                 Text(strings.usageFacts(account)).font(.callout).fixedSize(horizontal: false, vertical: true)
@@ -54,22 +48,12 @@ struct AccountDetail: View {
 
     private func forecastTitle(_ value: String, account: AccountUsage) -> some View {
         HStack(alignment: .firstTextBaseline) {
-            DetailForecastValue(value: value, variant: variant)
+            DetailForecastValue(value: value)
                 .contentTransition(.numericText())
                 .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: value)
             Spacer(minLength: 8)
             Text(strings.status(account)).font(.subheadline.weight(.semibold)).foregroundStyle(account.verdictTint)
         }
-    }
-
-    private func narrativeTitle(_ sentence: String, value: String, tint: Color) -> some View {
-        var title = AttributedString(sentence)
-        if let range = title.range(of: value) {
-            title[range].foregroundColor = tint
-            title[range].font = .system(size: 17, weight: .medium)
-        }
-        return Text(title).font(.system(size: 17)).monospacedDigit()
-            .fixedSize(horizontal: false, vertical: true).padding(.vertical, 4)
     }
 
     private func factRow(_ label: String, _ value: String) -> some View {

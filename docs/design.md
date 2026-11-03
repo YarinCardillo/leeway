@@ -102,7 +102,7 @@ Opened by native menu tracking, click, Return or Right Arrow as an NSMenu submen
 
 Width 340 pt, leading padding 16 pt and trailing padding 14 pt. Content, top to bottom:
 
-1. **Usage and headline**, a large used percentage followed by a Callout forecast range and the localized weekly period. The headline reads: `Lands between 84% and 97% on Tue 5:00 AM`. Descriptive text above a chart, in the manner of a prediction sentence. [R8] [A5]
+1. **Forecast headline**, account name above the forecast range in SF Pro Display Light 34 pt, with an 18 pt regular secondary `%` on the same baseline. The verdict sits opposite in words and its semantic color. Below, a 10 pt secondary caption names the reset or shows the chart inspection readout. Without a forecast, show measured usage and `used so far`; without a reading, show the typed reading state. Figures remain tabular. Owner choice A, 2026-11-03. [A5]
 2. **Chart**, native plot with a 170 pt inspection area (below).
 3. **Facts**, Subheadline 11 pt, two columns, labels and values in label colour, 16 pt rows:
 
@@ -234,7 +234,10 @@ SF Pro only, the system font. No Dynamic Type on macOS, so sizes below are fixed
 |-|-|-|-|
 | Menu bar title | Menu bar font | 13 | Regular |
 | Account name, form labels | Body | 13 / 16 | Regular |
-| Status word, chart headline | Callout | 12 / 15 | Regular, headline semibold |
+| Status word | Callout | 12 / 15 | Regular |
+| Detail forecast range | SF Pro Display | 34 | Light |
+| Detail percent suffix | SF Pro | 18 | Regular, secondary color |
+| Detail reset/readout caption | SF Pro | 10 | Regular, secondary color |
 | Facts, descriptions, reset | Subheadline | 11 / 14 | Regular |
 | Chart axis and line labels | Caption 1 | 10 / 13 | Regular (10 pt is the macOS minimum) |
 
@@ -409,8 +412,6 @@ fallback icon for macOS 14 and 15. The former raster app icon is no longer an
 input. See Apple's [Icon Composer documentation](https://developer.apple.com/documentation/xcode/creating-your-app-icon-using-icon-composer).
 
 
-### Temporary detail title comparison, owner revision 2026-11-03
+### Approved detail title, owner choice 2026-11-03
 
-Compare A (SF Pro Light 34 pt, secondary 18 pt percent, 10 pt caption), B (SF Pro Expanded Regular 32 pt, 17 pt percent), C (SF Pro Compressed Semibold 40 pt, 20 pt percent), and D (17 pt localized forecast sentence with only its range in the verdict color and Medium weight). Figures remain tabular. The temporary debug preference selects the study; the existing default remains until the owner's choice.
-
-The owner selected iOS references for typography and information hierarchy: [Opal](https://mobbin.com/screens/62769965-9c74-417e-ae28-deb6c2aba10e) places a colored value inside a sentence, [Instagram time management](https://mobbin.com/screens/33dbf88a-43a1-4344-ad20-cc74a0093a61) pairs a regular large metric with a compact label, and [YouTube Studio](https://mobbin.com/screens/39616b3b-ef06-43af-a3b1-f8584c161c12) puts values below a clean chart. These inform the native macOS studies rather than replacing native menu layout.
+The owner selected A: SF Pro Display Light 34 pt, secondary 18 pt percent and 10 pt caption. The temporary preference and the other studies are removed. This replaces the previous heavy title requirement.

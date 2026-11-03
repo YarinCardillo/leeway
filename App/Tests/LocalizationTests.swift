@@ -321,23 +321,3 @@ extension LocalizationTests {
         XCTAssertEqual(text.menuCaption(value), "Reading timed out")
     }
 }
-
-
-extension LocalizationTests {
-    func testForecastSentence_LocalizesWeekdayAndRange() throws {
-        let reset = try XCTUnwrap(Calendar(identifier: .gregorian).date(from:
-            DateComponents(year: 2026, month: 11, day: 7, hour: 12)))
-        let value = account(used: 27, week: 55, recent: 69, reset: reset)
-        XCTAssertEqual(try XCTUnwrap(strings(.english).forecastSentence(value)),
-                       "At the Saturday reset, you reach 55-69%")
-        XCTAssertEqual(try XCTUnwrap(strings(.italian).forecastSentence(value)),
-                       "Al reset di sabato arrivi al 55-69%")
-    }
-
-    func testForecastSentence_UsesExplicitFallbacksWithoutForecastOrReset() {
-        XCTAssertEqual(strings(.english).forecastSentence(account(reset: nil)), "At reset you reach 84-97%")
-        XCTAssertEqual(strings(.italian).forecastSentence(account(reset: nil)), "Al reset arrivi al 84-97%")
-        XCTAssertNil(strings(.english).forecastSentence(account(week: nil)))
-        XCTAssertNil(strings(.english).forecastSentence(account(used: nil)))
-    }
-}
