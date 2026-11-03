@@ -181,7 +181,7 @@ The standard macOS Settings window, opened with Command-comma, toolbar tab style
 One Account order picker leads the pane: Most at risk first (default) or Manual.
 It reads and writes AppPreferences.accountOrderMode, shared with the menu's
 Account order submenu. The status item shows the first enabled account in this
-same order. The owner replaced the previous separate pin/order model on
+same order. A single account order replaced the previous separate pin/order model on
 2026-11-03. A legacy pin becomes the first Manual ID; the old field is decode-only
 and is never written again. Existing Manual order without a pin is preserved.
 A native SwiftUI List below it shows the current names and supports native
@@ -200,7 +200,7 @@ Each account is one native grouped Form section. Its header contains the current
 |-|-|-|
 | Name | Plain native trailing TextField, no custom box, fill or border. Folder-based defaults such as Claude, Claude (claude-work), Claude (Orca profile), Codex; explicit renames always win, never infer identity from an email | spec 1, [R13] |
 | Show in menu | Native Toggle with automatic styling | [R13] |
-| Target | Value `75-100%` above one two-handle range control, default 75..100, steps of 5, minimum gap 5, limits 0..100. Explanation: Your weekly usage at reset | Owner decision 2026-11-03, [M6] value hierarchy |
+| Target | Value `75-100%` above one two-handle range control, default 75..100, steps of 5, minimum gap 5, limits 0..100. Explanation: Your weekly usage at reset | Decision 2026-11-03, [M6] value hierarchy |
 | Reserve account | Pop-up menu with `None` and every other account name. Used by steering as the account to move to | spec 7 |
 
 The source path belongs to the section header, never a free-standing view below a group. While any account retains its default name, Accounts shows one localized naming hint. Below the list: `Add Folder…` opens a folder chooser. User-added folders get a remove button. Discovered ones cannot be removed, only turned off.
@@ -306,7 +306,7 @@ Times and dates come from the locale, never from string templates. Percent sign 
 
 1. **Verdict and title.** The title shows the forecast high. The verdict compares the entire forecast interval with the target: high below target low is under, low above target high is over, overlap (including equality) is on target. No forecast is neutral, with explicit unavailable forecast text.
 2. **Early blocking.** Over is amber up to 12 hours between exhaustion and reset, red above 12. Without an exhaustion prediction it stays amber, with unknown early hours. Measured weekly usage at 95 does not override the interval verdict; five-hour blocking belongs to advisor policy.
-3. **Native menu drawing.** NSMenuItem attributed titles support multiline text and a meter attachment. AccountMenuRow measures the content with NSMenuItemCell, draws the attributed title and uses a neutral selection background, an explicit owner revision on 2026-11-03. NSMenu retains tracking, type selection, keyboard navigation and submenu placement. Commands use ordinary NSMenuItem drawing. Offscreen tests cover multiline sizing, semantic colours and target tick visibility.
+3. **Native menu drawing.** NSMenuItem attributed titles support multiline text and a meter attachment. AccountMenuRow measures the content with NSMenuItemCell, draws the attributed title and uses a neutral selection background, a deliberate revision on 2026-11-03. NSMenu retains tracking, type selection, keyboard navigation and submenu placement. Commands use ordinary NSMenuItem drawing. Offscreen tests cover multiline sizing, semantic colours and target tick visibility.
 4. **Hiding the extra.** The HIG asks that people, not the app, decide whether the extra is shown, and suggests a second entry point such as a Dock menu. The spec has no "show in menu bar" setting. Worth deciding before release. [A1]
 5. **Apple menu measurements.** AppKit owns standard command selection geometry. Account rows use native cell measurements, while the chart detail has a single stable content inset with no pin-state column.
 
@@ -352,7 +352,7 @@ Mobbin (web and iOS, used for information patterns only):
 
 The domain-specific Swift Charts view and its textual facts are hosted custom content. Apple supplies the marks, axes, cursor rule and audio graph; there is no standard NSMenu item that represents a weekly quota forecast. NSHostingView embeds this content in the native submenu. Its leading inset is stable because the detail has no native command or state column. The chart supports VoiceOver adjustment and its native audio graph.
 
-AppKit owns the status item and standard Settings window because the required native NSMenu hierarchy must coexist with hosted Charts content. SwiftUI grouped Forms and LabeledContent own Settings rows; the native Settings window rejects automatic responder changes until the first user click or key event, and resets its native scroll containers to the top whenever opened. Offscreen tests cover both rules. The only owner-requested custom Settings control is the Target range described below.
+AppKit owns the status item and standard Settings window because the required native NSMenu hierarchy must coexist with hosted Charts content. SwiftUI grouped Forms and LabeledContent own Settings rows; the native Settings window rejects automatic responder changes until the first user click or key event, and resets its native scroll containers to the top whenever opened. Offscreen tests cover both rules. The only custom Settings control is the Target range described below.
 
 Packaged-app checks cover menu placement, focus, VoiceOver, accent variants and macOS 14 behavior.
 
@@ -363,7 +363,7 @@ owns menu tracking and layout; account selection uses the neutral exception belo
 and the meter keeps its semantic palette.
 The target remains named in text and in the detailed chart.
 
-### Owner-requested exception: Target range control
+### Exception: Target range control
 
 macOS has no native two-handle range slider. The owner explicitly requested one
 on 2026-11-03. `TargetRangeControl` is one small SwiftUI view with the system
