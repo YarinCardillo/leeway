@@ -162,7 +162,7 @@ Each state is one concrete treatment, not a spinner.
 | **No accounts** | Symbol only | A single dimmed item `No accounts found`, a muted second line `Sign in with Claude Code or Codex, then choose Refresh Now`, then `Settings…` and `Quit Leeway`. The Refresh Now and Show Most at Risk items stay visible and dimmed [A1] |
 | **All accounts disabled** | Symbol only | Same as No accounts, second line `All accounts are turned off in Settings` |
 
-When a reading supplies a reason, display it. The current core otherwise reports only staleness, so use the localized instruction to check CLI sign-in and choose Refresh Now. A first reading in progress shows only native Reading usage text, with no sign-in hint. Leeway never logs in for the user.
+Enabling an account starts a refresh immediately. If another read is in flight, a follow-up read includes the newly enabled account. When a reading supplies a reason, display it. The current core otherwise reports only staleness, so use the localized instruction to check CLI sign-in and choose Refresh Now. A first reading in progress shows only native Reading usage text, with no sign-in hint. Leeway never logs in for the user.
 
 ## Settings window
 
@@ -170,7 +170,7 @@ The standard macOS Settings window, opened with Command-comma, toolbar tab style
 
 | Property | Value |
 |-|-|
-| Window | Native resizable window, minimum 520 by 440 pt, initial 560 by 500 pt, saved frame. One sizing policy for all tabs; no hidden zero-height panes |
+| Window | Native resizable window, minimum 520 by 440 pt, initial 560 by 500 pt, saved frame. One sizing policy for all tabs; changing panes never changes the user-selected size, and long native Forms scroll internally. The previous content-driven frame is reset once after this owner revision |
 | Tabs | Accounts, General, Updates, each with an SF Symbol in the toolbar |
 | Form | Grouped form. Row: label and an optional description on the leading side, control on the trailing side, hairline between rows [R10] [R11] |
 | Label | Body 13 pt. Description Subheadline 11 pt, secondary label |
@@ -179,7 +179,18 @@ The standard macOS Settings window, opened with Command-comma, toolbar tab style
 
 ### Accounts tab
 
-A list, one row per discovered account (two directories that are the same account appear once, spec 1). The Form scrolls within the native window.
+Two separate pickers lead the pane. Menu bar account chooses Most at risk or a
+pinned account, using the same AppPreferences.pinnedID and model.pin action as
+the menu. Changes update both immediately. Menu row order chooses Manual or
+Most at risk first (default), independently of the status-item account.
+A native SwiftUI List below it shows the current names and supports native
+drag and drop through onMove in Manual mode. The setting and stable account IDs
+are stored in presentation preferences. Failed saves restore the previous order.
+Unavailable IDs retain their saved positions, and newly discovered accounts
+append. Existing grouped account controls follow the same order below the list.
+This ordering is independent of Show Most at Risk and account pinning in the menu bar.
+
+One settings group per discovered account (two directories that are the same account appear once, spec 1). The Form scrolls within the native window.
 
 Each account is one native grouped Form section. Its header contains the current name and the selectable source folder as one piece of section metadata, with wrapping for long paths. Every control has a separate LabeledContent row, with labels in one column and a shared 180 pt trailing control column:
 
@@ -231,7 +242,7 @@ Separators between values are structure (two columns, a right aligned slot, a mu
 
 ## Colour
 
-Semantic label colours for essential text and neutral lines. Risk text uses semantic systemOrange and systemRed. Account selection uses unemphasizedSelectedContentBackgroundColor in both appearances. Names, captions, verdicts and meters keep their semantic colours when highlighted. AppKit owns command selection and menu materials, including Increase Contrast and Reduce Transparency. Controls have no tint, colour or toggle-style override. [A4]
+Semantic label colours for essential text and neutral lines. Risk text uses semantic systemOrange and systemRed. Account selection uses unemphasizedSelectedContentBackgroundColor blended 12% toward labelColor in both appearances. Names, captions, verdicts and meters keep their semantic colours when highlighted. AppKit owns command selection and menu materials, including Increase Contrast and Reduce Transparency. Controls have no tint, colour or toggle-style override. [A4]
 
 | Role | Colour | Used for |
 |-|-|-|
@@ -378,8 +389,10 @@ grey instead of accent selection. AppKit has no public per-item selection-colour
 setter. AccountMenuRow is a drawing-only NSMenuItem view using NSMenuItemCell to
 measure the native title inset and row size. It draws the attributed title and
 attachment directly, with a system chevron symbol for the submenu. A rounded neutral background uses
-unemphasizedSelectedContentBackgroundColor, with a 5 pt inset and corner radius.
-The view does not intercept input; NSMenu owns pointer and keyboard tracking,
+unemphasizedSelectedContentBackgroundColor blended 12% toward labelColor, with a
+5 pt inset and corner radius. A native tracking area updates drawing on pointer
+entry and exit; it never intercepts clicks or replaces native submenu tracking.
+The view does not intercept clicks; NSMenu owns pointer and keyboard tracking,
 submenus and the menu item's accessibility. Caption, verdict and meter colours
 remain unchanged. Refresh Now, Settings and Quit have no custom view.
 
