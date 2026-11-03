@@ -1,6 +1,7 @@
 """Exercise the shell boundary without signing or contacting external services."""
 from pathlib import Path
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -8,6 +9,9 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts/release.sh"
+FIRST_BUILD_CONFIG = re.sub(r"(?m)^CURRENT_PROJECT_VERSION = \d+$", "CURRENT_PROJECT_VERSION = 1",
+                            (ROOT / "App/Version.xcconfig").read_text())
+CURRENT = re.search(r"^LEEWAY_RELEASE_VERSION = (\S+)$", (ROOT / "App/Version.xcconfig").read_text(), re.M).group(1)
 
 
 class ReleaseEntrypointTests(unittest.TestCase):
@@ -27,7 +31,7 @@ class ReleaseEntrypointTests(unittest.TestCase):
             root = Path(directory)
             shutil.copytree(ROOT / "scripts", root / "scripts")
             (root / "App").mkdir()
-            shutil.copy(ROOT / "App/Version.xcconfig", root / "App/Version.xcconfig")
+            (root / "App/Version.xcconfig").write_text(FIRST_BUILD_CONFIG)
             shutil.copy(ROOT / "CHANGELOG.md", root / "CHANGELOG.md")
             tools = root / "tools"
             tools.mkdir()
@@ -39,18 +43,18 @@ class ReleaseEntrypointTests(unittest.TestCase):
                 command.write_text("#!/bin/sh\n" + body)
                 command.chmod(0o755)
             environment = dict(os.environ, PATH=str(tools) + os.pathsep + os.environ["PATH"])
-            result = subprocess.run(["/bin/bash", str(root / "scripts/release.sh"), "0.1.0"],
+            result = subprocess.run(["/bin/bash", str(root / "scripts/release.sh"), CURRENT],
                                     env=environment, capture_output=True, text=True, timeout=15)
             self.assertEqual(result.returncode, 73, result.stdout + result.stderr)
             self.assertNotIn("gh release create", result.stdout)
-            output = root / ".build/releases/0.1.0"
+            output = root / ".build/releases" / CURRENT
             self.assertFalse((output / "publish-draft.sh").exists())
             self.assertIn("intentional build failure", (output / "logs/resolve.log").read_text())
 
     def release_fixture(self, root):
         shutil.copytree(ROOT / "scripts", root / "scripts")
         (root / "App").mkdir()
-        shutil.copy(ROOT / "App/Version.xcconfig", root / "App/Version.xcconfig")
+        (root / "App/Version.xcconfig").write_text(FIRST_BUILD_CONFIG)
         shutil.copy(ROOT / "CHANGELOG.md", root / "CHANGELOG.md")
         (root / ".gitignore").write_text(".build/\n")
         (root / "scripts/sign_bundle.py").write_text(
@@ -70,7 +74,7 @@ class ReleaseEntrypointTests(unittest.TestCase):
 
     def run_fixture(self, root, tools, **extra):
         environment = dict(os.environ, PATH=str(tools) + os.pathsep + os.environ["PATH"], **extra)
-        return subprocess.run(["/bin/bash", str(root / "scripts/release.sh"), "0.1.0"],
+        return subprocess.run(["/bin/bash", str(root / "scripts/release.sh"), CURRENT],
                               env=environment, capture_output=True, text=True, timeout=15)
 
     def test_dirty_or_untracked_tree_refused_before_outputs_or_build(self):
@@ -107,4 +111,4 @@ fi
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("clean worktree", result.stdout + result.stderr)
                 self.assertFalse((root / ".build/signed").exists())
-                self.assertTrue((root / ".build/releases/0.1.0/logs/app-build.log").exists())
+                self.assertTrue((root / ".build/releases" / CURRENT / "logs/app-build.log").exists())

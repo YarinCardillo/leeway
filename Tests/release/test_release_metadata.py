@@ -1,5 +1,6 @@
 """Behavioral checks for release inputs and publishable update metadata."""
 import importlib.util
+import re
 from pathlib import Path
 import tempfile
 import unittest
@@ -8,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location("release_metadata", ROOT / "scripts/release_metadata.py")
 metadata = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(metadata)
+CURRENT = re.search(r"^LEEWAY_RELEASE_VERSION = (\S+)$", (ROOT / "App/Version.xcconfig").read_text(), re.M).group(1)
 
 
 class ReleaseMetadataTests(unittest.TestCase):
@@ -22,10 +24,10 @@ class ReleaseMetadataTests(unittest.TestCase):
 
     def test_public_release_inputs_match_the_requested_version(self):
         config = (ROOT / "App/Version.xcconfig").read_text()
-        self.assertEqual(metadata.read_version(config, "0.1.0")[0], "0.1.0")
+        self.assertEqual(metadata.read_version(config, CURRENT)[0], CURRENT)
         cask = (ROOT / "Casks/leeway.rb").read_text()
-        self.assertIn('version "0.1.0"', cask)
-        self.assertTrue(metadata.release_notes((ROOT / "CHANGELOG.md").read_text(), "0.1.0").strip())
+        self.assertIn(f'version "{CURRENT}"', cask)
+        self.assertTrue(metadata.release_notes((ROOT / "CHANGELOG.md").read_text(), CURRENT).strip())
 
     def test_changelog_selects_exact_release_without_unreleased_changes(self):
         changelog = "# Changelog\n\n## Unreleased\n\n- Future.\n\n## 0.1.0-rc.1\n\n- First release.\n\n## 0.0.9\n\n- Old.\n"
