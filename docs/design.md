@@ -124,7 +124,7 @@ Swift Charts, one line chart, one visual system for every account. [A5]
 
 | Mark | Style | Reference |
 |-|-|-|
-| X axis | The weekly window from its start to the reset. Ticks at each day start, labelled with day initials (S M T W T F S), 10 pt, label colour, so the week reads at a glance | [R5] |
+| X axis | The weekly window from its start exactly to the reset, with zero horizontal scale padding. Y labels occupy space outside the plot. Ticks at each day start, labelled with day initials (S M T W T F S), 10 pt, label colour, so the week reads at a glance | [R5] |
 | Y axis | 0 through the maximum of 100, both forecasts and measured values, plus 10 percentage points. Labels remain 0, 50, 100, trailing side, with light native gridlines | [R14] |
 | Used curve | Solid, 1.5 pt, label colour, round joins, from week start to now | [R6] this week as a solid dark line |
 | Today marker | 6 pt filled circle in label colour at the latest point. Static, no pulse | [R6] [R9] |
@@ -133,7 +133,7 @@ Swift Charts, one line chart, one visual system for every account. [A5]
 | Target bounds | Two dotted 1 pt neutral rules, target low labelled below and target high above, at the trailing edge | [R5] [R9] |
 | 100% line | Hairline 1 pt solid, separator colour, with the label `Limit 100%` above it at the leading edge | [R9] |
 | Legend | None. The headline names the range, the labels name the lines. Solid means measured, dashed means forecast | [A5] |
-| Hover readout | Native RuleMark at the inspected date and plain text above the chart showing date/time and measured usage, or the interpolated projected range. A trailing plot inset protects the final weekday label | [A5] |
+| Hover readout | Native RuleMark at the inspected date and plain text above the chart showing date/time and measured usage, or the interpolated projected range. The plot ends at reset; native axis labels use space outside it | [A5] |
 | Animation | None. The chart renders in place | Design signature (restraint) |
 
 The tint is applied only to the projection range. Target rules and the 100% line stay neutral.

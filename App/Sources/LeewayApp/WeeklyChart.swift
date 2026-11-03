@@ -40,7 +40,7 @@ struct WeeklyChart: View {
             }
             readoutMarks
         }
-        .chartXScale(domain: start...reset, range: .plotDimension(startPadding: 4, endPadding: 12))
+        .chartXScale(domain: start...reset, range: .plotDimension(startPadding: 0, endPadding: 0))
         .chartYScale(domain: account.chartYDomain)
         .padding(.trailing, 8)
         .chartXAxis { AxisMarks(values: .stride(by: .day)) { value in
