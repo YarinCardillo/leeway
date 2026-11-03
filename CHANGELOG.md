@@ -2,8 +2,7 @@
 
 ## 0.1.2
 
-- Replace the app target icon with a centered white Leeway wordmark on a sage gradient.
-- Generate SF Pro Semibold outlines for the layered macOS 26 icon and macOS 14/15 fallback, with no runtime font dependency.
+- New app icon: the Leeway wordmark in white on a sage gradient, in the layered macOS 26 format with fallbacks for macOS 14 and 15.
 
 ## 0.1.1
 

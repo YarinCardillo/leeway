@@ -415,7 +415,7 @@ document for macOS 26 and generates fallback icons for macOS 14 and 15.
 Regenerate with `swift scripts/generate_app_icon.swift`. The script uses CoreText
 to shape SF Pro Semibold and converts every glyph to an SVG path, preserving
 kerning. Only vector outlines ship, with no runtime font dependency. An optional
-output directory supports isolated generation checks. The owner replaced the
+output directory supports isolated generation checks. A revision replaced the
 target-on-graphite design with this wordmark on 2026-11-03. See Apple's
 [Icon Composer documentation](https://developer.apple.com/documentation/xcode/creating-your-app-icon-using-icon-composer).
 
