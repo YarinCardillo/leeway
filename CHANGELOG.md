@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.2
+
+- Replace the app target icon with a centered white Leeway wordmark on a sage gradient.
+- Generate SF Pro Semibold outlines for the layered macOS 26 icon and macOS 14/15 fallback, with no runtime font dependency.
+
 ## 0.1.1
 
 - Read newly enabled accounts immediately and retain typed source failure messages.
