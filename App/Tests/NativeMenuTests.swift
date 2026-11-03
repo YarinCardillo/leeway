@@ -5,20 +5,19 @@ import XCTest
 
 @MainActor
 final class NativeMenuTests: XCTestCase {
-    func testAccounts_HaveNativeSubmenusAndNoCustomSelectionViews() async {
+    func testAccounts_HaveNativeSubmenusAndOnlyAccountsCustomizeSelection() async {
         let model = UsageModel(provider: MockUsageProvider(), defaults: UserDefaults(suiteName: UUID().uuidString)!)
         await model.refresh()
         let builder = UsageMenu(model: model, openSettings: {})
         let menu = builder.makeMenu()
         builder.menuNeedsUpdate(menu)
         let row = menu.items.first!
-        XCTAssertNil(row.view)
+        XCTAssertNotNil(row.view)
         XCTAssertNotNil(row.submenu)
         XCTAssertTrue(row.attributedTitle!.string.contains("resets"))
-        let pin = row.submenu!.items.last!
-        XCTAssertNil(pin.view)
-        XCTAssertEqual(pin.title, "Show in Menu Bar")
-        XCTAssertNotNil(pin.action)
+        XCTAssertEqual(row.submenu!.items.count, 1)
+        XCTAssertNotNil(row.submenu!.items[0].view)
+        XCTAssertNil(row.submenu!.items[0].action)
     }
 }
 
@@ -48,9 +47,9 @@ extension NativeMenuTests {
         XCTAssertNotEqual(under.tiffRepresentation, target.tiffRepresentation)
         XCTAssertNotEqual(target.tiffRepresentation, over.tiffRepresentation)
         XCTAssertNil(NativeStatusItem.iconTint(status: .onTarget, severity: nil))
-        XCTAssertEqual(NativeStatusItem.iconTint(status: .under, severity: nil), .controlAccentColor)
-        XCTAssertEqual(NativeStatusItem.iconTint(status: .over, severity: .amber), .systemOrange)
-        XCTAssertEqual(NativeStatusItem.iconTint(status: .over, severity: .red), .systemRed)
+        XCTAssertNil(NativeStatusItem.iconTint(status: .under, severity: nil))
+        XCTAssertNil(NativeStatusItem.iconTint(status: .over, severity: .amber))
+        XCTAssertNil(NativeStatusItem.iconTint(status: .over, severity: .red))
     }
 }
 
@@ -87,7 +86,7 @@ extension NativeMenuTests {
 
 
 extension NativeMenuTests {
-    func testSubmenuTracking_KeepsAllParentTextSelectedUntilRootCloses() async throws {
+    func testSubmenuTracking_PreservesSemanticColoursUntilRootCloses() async throws {
         let model = UsageModel(provider: MockUsageProvider(now: Date().addingTimeInterval(-7200)), defaults: UserDefaults(suiteName: UUID().uuidString)!)
         await model.refresh()
         let builder = UsageMenu(model: model, openSettings: {})
@@ -97,6 +96,7 @@ extension NativeMenuTests {
         let detail = try XCTUnwrap(row.submenu)
         for appearance in [NSAppearance.Name.aqua, .darkAqua] {
             NSAppearance(named: appearance)!.performAsCurrentDrawingAppearance {
+                let original = row.attributedTitle!
                 builder.menu(menu, willHighlight: row)
                 builder.menuWillOpen(detail)
                 builder.menu(menu, willHighlight: nil)
@@ -104,9 +104,11 @@ extension NativeMenuTests {
                 let title = row.attributedTitle!
                 title.enumerateAttributes(in: NSRange(location: 0, length: title.length)) { attributes, _, _ in
                     if attributes[.font] != nil {
-                        XCTAssertEqual(attributes[.foregroundColor] as? NSColor, .selectedMenuItemTextColor)
+                        XCTAssertNotEqual(attributes[.foregroundColor] as? NSColor, .selectedMenuItemTextColor)
                     }
                 }
+                XCTAssertEqual(original.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor,
+                               title.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor)
                 builder.menu(menu, willHighlight: menu.items[1])
                 XCTAssertNotEqual(row.attributedTitle!.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor,
                                   .selectedMenuItemTextColor)
@@ -160,5 +162,257 @@ extension NativeMenuTests {
     private func meter(in item: NSMenuItem) -> NSTextAttachment? {
         guard let title = item.attributedTitle, let index = title.string.firstIndex(of: "\u{fffc}") else { return nil }
         return title.attribute(.attachment, at: index.utf16Offset(in: title.string), effectiveRange: nil) as? NSTextAttachment
+    }
+}
+
+extension NativeMenuTests {
+    func testUsageMeter_TargetTicksRemainVisibleAboveOverlappingFills() throws {
+        var account = AccountUsage(id: "overlap", name: "Work", source: "claude", weeklyUsed: 96,
+                                   fiveHourUsed: nil, reset: nil, fiveHourReset: nil, weekForecast: 70,
+                                   recentForecast: 116, recordedAt: nil, history: [])
+        account.targetLow = 75
+        account.targetHigh = 100
+        let title = try XCTUnwrap(NativeUsageMeter.attachment(account: account, width: 200))
+        let attachment = try XCTUnwrap(title.attribute(.attachment, at: 0, effectiveRange: nil) as? NSTextAttachment)
+        let image = try XCTUnwrap((attachment.attachmentCell as? NSTextAttachmentCell)?.image)
+        for name in [NSAppearance.Name.aqua, .darkAqua] {
+            NSAppearance(named: name)!.performAsCurrentDrawingAppearance {
+                let bitmap = NSBitmapImageRep(cgImage: image.cgImage(forProposedRect: nil, context: nil, hints: nil)!)
+                for fraction in [0.75, 1.0] {
+                    let x = min(bitmap.pixelsWide - 2, Int(Double(bitmap.pixelsWide) * fraction))
+                    XCTAssertGreaterThan(bitmap.colorAt(x: x, y: 0)!.alphaComponent, 0.9)
+                }
+                XCTAssertLessThan(bitmap.colorAt(x: 100, y: 0)!.alphaComponent, 0.1)
+            }
+        }
+    }
+}
+
+
+extension NativeMenuTests {
+    func testAccountHighlight_UsesNeutralSelectionAndLeavesCommandsNative() async throws {
+        let model = UsageModel(provider: MockUsageProvider(), defaults: UserDefaults(suiteName: UUID().uuidString)!)
+        await model.refresh()
+        let builder = UsageMenu(model: model, openSettings: {})
+        let menu = builder.makeMenu()
+        builder.menuNeedsUpdate(menu)
+        let row = menu.items[0]
+        let view = try XCTUnwrap(row.view as? AccountMenuRow)
+        for name in [NSAppearance.Name.aqua, .darkAqua] {
+            NSAppearance(named: name)!.performAsCurrentDrawingAppearance {
+                builder.menu(menu, willHighlight: row)
+                XCTAssertTrue(view.isHighlighted)
+                let neutral = view.selectionColor.usingColorSpace(.sRGB)!
+                let native = NSColor.unemphasizedSelectedContentBackgroundColor.usingColorSpace(.sRGB)!
+                XCTAssertEqual(neutral.redComponent, neutral.greenComponent, accuracy: 0.001)
+                XCTAssertEqual(neutral.greenComponent, neutral.blueComponent, accuracy: 0.001)
+                XCTAssertGreaterThan(abs(neutral.redComponent - native.redComponent), 0.08)
+                XCTAssertNotEqual(view.selectionColor, .selectedContentBackgroundColor)
+                builder.menu(menu, willHighlight: menu.items.last)
+                XCTAssertFalse(view.isHighlighted)
+            }
+        }
+        for item in menu.items where !item.keyEquivalent.isEmpty { XCTAssertNil(item.view) }
+    }
+}
+
+extension NativeMenuTests {
+    func testAccountRow_DrawsMultilineContentWhenInstalledAsItemView() async throws {
+        let model = UsageModel(provider: MockUsageProvider(), defaults: UserDefaults(suiteName: UUID().uuidString)!)
+        await model.refresh()
+        let builder = UsageMenu(model: model, openSettings: {})
+        let menu = builder.makeMenu()
+        builder.menuNeedsUpdate(menu)
+        let view = try XCTUnwrap(menu.items[0].view as? AccountMenuRow)
+        XCTAssertGreaterThan(view.bounds.height, 40)
+        let image = NSImage(size: view.bounds.size, flipped: true) { rect in
+            MainActor.assumeIsolated { view.draw(rect) }
+            return true
+        }
+        let bitmap = NSBitmapImageRep(cgImage: try XCTUnwrap(image.cgImage(forProposedRect: nil, context: nil, hints: nil)))
+        let hasContent = (0..<bitmap.pixelsHigh).contains { y in
+            (0..<bitmap.pixelsWide).contains { x in (bitmap.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.5 }
+        }
+        XCTAssertTrue(hasContent)
+    }
+}
+
+
+extension NativeMenuTests {
+    func testAccountHighlight_AllVerdictsKeepTextAndMeterColours() async throws {
+        let model = UsageModel(provider: MockUsageProvider(), defaults: UserDefaults(suiteName: UUID().uuidString)!)
+        await model.refresh()
+        let builder = UsageMenu(model: model, openSettings: {})
+        let menu = builder.makeMenu()
+        builder.menuNeedsUpdate(menu)
+        for name in [NSAppearance.Name.aqua, .darkAqua] {
+            NSAppearance(named: name)!.performAsCurrentDrawingAppearance {
+                for row in menu.items where row.view is AccountMenuRow {
+                    let original = row.attributedTitle!
+                    let attachment = meter(in: row)
+                    builder.menu(menu, willHighlight: row)
+                    XCTAssertTrue(original.isEqual(to: row.attributedTitle!))
+                    XCTAssertTrue(attachment === meter(in: row))
+                    builder.menu(menu, willHighlight: menu.items.last)
+                }
+            }
+        }
+    }
+}
+
+extension NativeMenuTests {
+    func testAccountRow_LongerUpdatedCaptionExpandsWithoutShrinkingMenuWidth() async throws {
+        let model = UsageModel(provider: MockUsageProvider(), defaults: UserDefaults(suiteName: UUID().uuidString)!)
+        await model.refresh()
+        let builder = UsageMenu(model: model, openSettings: {})
+        let menu = builder.makeMenu()
+        builder.menuNeedsUpdate(menu)
+        let row = menu.items[0]
+        let view = try XCTUnwrap(row.view as? AccountMenuRow)
+        let originalWidth = view.frame.width
+        let longer = NSMutableAttributedString(attributedString: row.attributedTitle!)
+        longer.append(NSAttributedString(string: ", reading is 120 minutes old", attributes: [.font: NSFont.systemFont(ofSize: 11)]))
+        view.update(title: longer)
+        XCTAssertGreaterThan(view.frame.width, originalWidth)
+        let expandedWidth = view.frame.width + 30
+        view.setFrameSize(NSSize(width: expandedWidth, height: view.frame.height))
+        view.update(title: row.attributedTitle)
+        XCTAssertEqual(view.frame.width, expandedWidth)
+    }
+}
+
+extension NativeMenuTests {
+    func testAccountPointerHover_HighlightsImmediatelyAndRetainsOpenSubmenu() async throws {
+        let model = UsageModel(provider: MockUsageProvider(), defaults: UserDefaults(suiteName: UUID().uuidString)!)
+        await model.refresh()
+        let builder = UsageMenu(model: model, openSettings: {})
+        let menu = builder.makeMenu()
+        builder.menuNeedsUpdate(menu)
+        let row = menu.items[0]
+        let view = try XCTUnwrap(row.view as? AccountMenuRow)
+        view.updateTrackingAreas()
+        XCTAssertTrue(view.trackingAreas.contains { $0.options.contains([.mouseEnteredAndExited, .activeAlways, .inVisibleRect]) })
+        let event = try XCTUnwrap(NSEvent.enterExitEvent(with: .mouseEntered, location: .zero,
+            modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, eventNumber: 0, trackingNumber: 0, userData: nil))
+        view.mouseEntered(with: event)
+        XCTAssertTrue(view.isHighlighted)
+        view.mouseExited(with: event)
+        XCTAssertFalse(view.isHighlighted)
+        view.mouseEntered(with: event)
+        builder.menuWillOpen(try XCTUnwrap(row.submenu))
+        view.mouseExited(with: event)
+        XCTAssertTrue(view.isHighlighted)
+        builder.menuDidClose(menu)
+        XCTAssertFalse(view.isHighlighted)
+    }
+}
+
+extension NativeMenuTests {
+    func testAccountPointerHover_NativeNilHighlightDoesNotErasePointerSelection() async throws {
+        let model = UsageModel(provider: MockUsageProvider(), defaults: UserDefaults(suiteName: UUID().uuidString)!)
+        await model.refresh()
+        let builder = UsageMenu(model: model, openSettings: {})
+        let menu = builder.makeMenu()
+        builder.menuNeedsUpdate(menu)
+        builder.menuWillOpen(menu)
+        defer { builder.menuDidClose(menu) }
+        let view = try XCTUnwrap(menu.items[0].view as? AccountMenuRow)
+        let event = try XCTUnwrap(NSEvent.enterExitEvent(with: .mouseEntered, location: .zero,
+            modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, eventNumber: 0, trackingNumber: 0, userData: nil))
+        view.mouseEntered(with: event)
+        builder.menu(menu, willHighlight: nil)
+        await Task.yield()
+        XCTAssertTrue(view.isHighlighted)
+    }
+}
+
+extension NativeMenuTests {
+    func testPendingRead_OpenMenuUpdatesWhenTypedFailureArrivesWithoutAgeTimer() async throws {
+        let provider = MenuReadingProvider()
+        let model = UsageModel(provider: provider, defaults: UserDefaults(suiteName: UUID().uuidString)!)
+        await model.refresh()
+        provider.shouldSuspend = true
+        let refresh = Task { await model.refresh() }
+        while !provider.hasStarted { await Task.yield() }
+        let builder = UsageMenu(model: model, openSettings: {})
+        let menu = builder.makeMenu()
+        builder.menuNeedsUpdate(menu)
+        builder.menuWillOpen(menu)
+        defer { builder.menuDidClose(menu) }
+        let row = menu.items[0]
+        XCTAssertTrue(row.attributedTitle!.string.contains("Reading usage"))
+        provider.finish()
+        await refresh.value
+        for _ in 0..<100 where row.attributedTitle!.string.contains("Reading usage") { await Task.yield() }
+        XCTAssertTrue(row.attributedTitle!.string.contains("read_error.timeout"))
+        XCTAssertFalse(row.attributedTitle!.string.contains("Reading usage"))
+    }
+
+    func testPointerHover_OlderNilCallbackCannotOverrideNewKeyboardCommand() async throws {
+        let model = UsageModel(provider: MockUsageProvider(), defaults: UserDefaults(suiteName: UUID().uuidString)!)
+        await model.refresh()
+        let builder = UsageMenu(model: model, openSettings: {})
+        let menu = builder.makeMenu()
+        builder.menuNeedsUpdate(menu)
+        builder.menuWillOpen(menu)
+        defer { builder.menuDidClose(menu) }
+        let view = try XCTUnwrap(menu.items[0].view as? AccountMenuRow)
+        let event = try XCTUnwrap(NSEvent.enterExitEvent(with: .mouseEntered, location: .zero,
+            modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, eventNumber: 0, trackingNumber: 0, userData: nil))
+        view.mouseEntered(with: event)
+        builder.menu(menu, willHighlight: nil)
+        builder.menu(menu, willHighlight: menu.items.last)
+        await Task.yield()
+        XCTAssertFalse(view.isHighlighted)
+    }
+
+    func testAccountOrder_MenuAndSettingsShareOrderAndFirstAccount() async throws {
+        let model = UsageModel(provider: TestProvider(), defaults: UserDefaults(suiteName: UUID().uuidString)!)
+        await model.refresh()
+        let builder = UsageMenu(model: model, openSettings: {})
+        let menu = builder.makeMenu()
+        builder.menuNeedsUpdate(menu)
+        builder.menuWillOpen(menu)
+        defer { builder.menuDidClose(menu) }
+        let choices = try XCTUnwrap(menu.items.first { $0.title == "Account order" }?.submenu)
+        let automatic = try XCTUnwrap(choices.items.first { $0.title == "Most at risk first" })
+        let manual = try XCTUnwrap(choices.items.first { $0.title == "Manual" })
+        model.setAccountOrderMode(.manual)
+        model.moveAccounts(fromOffsets: [1], toOffset: 0)
+        for _ in 0..<100 where manual.state != .on { await Task.yield() }
+        XCTAssertEqual(manual.state, .on)
+        XCTAssertEqual(automatic.state, .off)
+        XCTAssertEqual(model.selectedAccount?.id, "low")
+        choices.performActionForItem(at: choices.index(of: automatic))
+        XCTAssertEqual(model.preferences.accountOrderMode, .mostAtRisk)
+        XCTAssertEqual(model.selectedAccount?.id, "high")
+        choices.performActionForItem(at: choices.index(of: manual))
+        XCTAssertEqual(model.preferences.accountOrderMode, .manual)
+        XCTAssertEqual(model.selectedAccount?.id, "low")
+        XCTAssertEqual(model.enabledAccounts.first?.id, model.selectedAccount?.id)
+    }
+
+}
+
+@MainActor
+private final class MenuReadingProvider: AppModel.UsageProvider {
+    var shouldSuspend = false
+    var hasStarted = false
+    private var continuation: CheckedContinuation<[AccountUsage], Never>?
+    func refresh() async throws -> [AccountUsage] {
+        if shouldSuspend {
+            hasStarted = true
+            return await withCheckedContinuation { continuation = $0 }
+        }
+        var missing = TestProvider.readings[0]
+        missing.weeklyUsed = nil
+        return [missing]
+    }
+    func finish() {
+        var failed = TestProvider.readings[0]
+        failed.weeklyUsed = nil
+        failed.error = .timeout
+        continuation?.resume(returning: [failed])
+        continuation = nil
     }
 }

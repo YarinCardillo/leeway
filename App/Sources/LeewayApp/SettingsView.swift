@@ -17,7 +17,7 @@ struct SettingsView: View {
                     .font(.callout).fixedSize(horizontal: false, vertical: true).padding()
             }
         }
-        .frame(minWidth: SettingsLayout.minimumWidth, idealWidth: contentWidth, alignment: .top)
+        .frame(minWidth: SettingsLayout.minimumWidth, idealWidth: contentWidth, minHeight: SettingsLayout.minimumHeight, maxHeight: .infinity, alignment: .top)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { contentWidth = $0 }
         .environment(\.locale, strings.locale)
         .onAppear(perform: login.reload)

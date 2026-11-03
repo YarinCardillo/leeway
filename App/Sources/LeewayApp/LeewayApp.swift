@@ -116,18 +116,13 @@ private final class ApplicationDelegate: NSObject, NSApplicationDelegate {
     @objc private func showSettings() {
         guard let model, let updates else { return }
         if settingsWindow == nil {
-            let hosting = SettingsContentController(rootView: SettingsView(model: model, updates: updates, navigation: settingsNavigation))
-            hosting.sizingOptions = [.preferredContentSize]
-            let window = SettingsWindow(contentViewController: hosting)
-            window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
-            window.setContentSize(NSSize(width: 560, height: 500))
-            window.contentMinSize = NSSize(width: SettingsLayout.minimumWidth, height: 0)
-            window.setFrameAutosaveName("LeewaySettings")
+            let hosting = NSHostingController(rootView: SettingsView(model: model, updates: updates, navigation: settingsNavigation))
+            hosting.sizingOptions = []
+            let window = SettingsWindow(settingsContent: hosting)
             let toolbar = SettingsToolbar(navigation: settingsNavigation, model: model)
             toolbar.install(in: window)
             settingsToolbar = toolbar
-            if !window.setFrameUsingName("LeewaySettings") { window.center() }
-            window.resizeContent(to: hosting.preferredContentSize, animated: false)
+            window.restorePlacement(autosaveName: "LeewaySettingsV2")
             settingsWindow = NSWindowController(window: window)
         }
         (settingsWindow?.window as? SettingsWindow)?.prepareForOpening()

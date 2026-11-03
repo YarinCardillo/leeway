@@ -20,7 +20,7 @@ final class NativeStatusItem {
         observe()
     }
 
-    /// Loads a preserved-vector Phosphor template; the status button supplies semantic tint.
+    /// Loads a preserved-vector Phosphor template; AppKit supplies the menu bar foreground.
     static func icon(status: UsageStatus?) -> NSImage? {
         let name: String
         switch status {
@@ -42,8 +42,7 @@ final class NativeStatusItem {
     }
 
     static func iconTint(status: UsageStatus?, severity: RiskSeverity?) -> NSColor? {
-        guard let status, status != .onTarget else { return nil }
-        return RiskTextColor.color(status, severity: severity)
+        nil
     }
 
     /// The glyph is a verdict, so a change dissolves instead of snapping. Reduce Motion keeps the snap.

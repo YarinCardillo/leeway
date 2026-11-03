@@ -33,8 +33,6 @@
 "Reserve account for %@" = "Reserve account for %@";
 "Resets %@" = "Resets %@";
 "Settings…" = "Settings…";
-"Show Most at Risk" = "Show Most at Risk";
-"Show in Menu Bar" = "Show in Menu Bar";
 "Sign in with Claude Code or Codex, then choose Refresh Now" = "Sign in with Claude Code or Codex, then choose Refresh Now";
 "Solid line: measured usage. Dashed lines: forecasts." = "Solid line: measured usage. Dashed lines: forecasts.";
 "System default" = "System default";
@@ -118,3 +116,9 @@
 
 "Forecast unavailable" = "Forecast unavailable";
 "target %@" = "target %@";
+
+"Account order" = "Account order";
+"Manual" = "Manual";
+"Most at risk first" = "Most at risk first";
+"Drag accounts to change their order." = "Drag accounts to change their order.";
+"Reading" = "Reading";

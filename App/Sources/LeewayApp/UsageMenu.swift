@@ -1,6 +1,7 @@
 import AppKit
 import AppModel
 import SwiftUI
+import Observation
 
 /// Native menu items own selection, tracking, keyboard shortcuts and submenu placement.
 @MainActor
@@ -12,7 +13,9 @@ final class UsageMenu: NSObject, NSMenuDelegate {
     private static let contentWidth: CGFloat = 290
     private static let lineGap: CGFloat = 3
     private var accountItems: [String: NSMenuItem] = [:]
+    private var orderItems: [AccountOrderMode: NSMenuItem] = [:]
     private var highlightedID: String?
+    private var highlightGeneration = 0
     private weak var rootMenu: NSMenu?
     private var updatedItem: NSMenuItem?
     private var openDetailID: String?
@@ -21,6 +24,8 @@ final class UsageMenu: NSObject, NSMenuDelegate {
     init(model: UsageModel, openSettings: @escaping () -> Void) {
         self.model = model
         self.openSettings = openSettings
+        super.init()
+        observeReadings()
     }
 
     func makeMenu() -> NSMenu {
@@ -36,7 +41,9 @@ final class UsageMenu: NSObject, NSMenuDelegate {
         guard menu === rootMenu else { return }
         menu.removeAllItems()
         accountItems.removeAll()
+        orderItems.removeAll()
         highlightedID = nil
+        highlightGeneration += 1
         for account in model.enabledAccounts { menu.addItem(accountItem(account)) }
         if model.enabledAccounts.isEmpty { addEmptyState(to: menu) }
         menu.addItem(.separator())
@@ -83,6 +90,8 @@ final class UsageMenu: NSObject, NSMenuDelegate {
     /// AppKit retains the parent selection while its detail submenu is tracking.
     func menu(_ menu: NSMenu, willHighlight item: NSMenuItem?) {
         guard menu === rootMenu else { return }
+        highlightGeneration += 1
+        let generation = highlightGeneration
         if let item {
             let id = accountItems.first { $0.value === item }?.key
             if id != openDetailID { openDetailID = nil }
@@ -90,10 +99,26 @@ final class UsageMenu: NSObject, NSMenuDelegate {
         } else {
             // AppKit can send nil just before opening the submenu. Reconcile after that transition.
             Task { @MainActor [weak self] in
-                guard let self, self.readingTimer != nil, self.openDetailID == nil else { return }
-                self.setHighlighted(self.rootMenu?.highlightedItem.flatMap { item in
+                guard let self, self.readingTimer != nil, self.openDetailID == nil,
+                      self.highlightGeneration == generation else { return }
+                let pointed = self.accountItems.first { ($0.value.view as? AccountMenuRow)?.isPointerInside == true }?.key
+                self.setHighlighted(pointed ?? self.rootMenu?.highlightedItem.flatMap { item in
                     self.accountItems.first { $0.value === item }?.key
                 })
+            }
+        }
+    }
+
+    private func observeReadings() {
+        withObservationTracking {
+            _ = model.accounts
+            _ = model.isRefreshing
+            _ = model.preferences.accountOrderMode
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                if self.readingTimer != nil { self.updateReadingTimes() }
+                self.observeReadings()
             }
         }
     }
@@ -103,14 +128,19 @@ final class UsageMenu: NSObject, NSMenuDelegate {
         let changed = [highlightedID, id].compactMap { $0 }
         highlightedID = id
         for account in model.enabledAccounts where changed.contains(account.id) {
-            accountItems[account.id]?.attributedTitle = rowTitle(account, isHighlighted: account.id == id)
+            guard let item = accountItems[account.id] else { continue }
+            (item.view as? AccountMenuRow)?.isHighlighted = account.id == id
         }
     }
 
     func updateReadingTimes() {
+        for (mode, item) in orderItems {
+            item.state = model.preferences.accountOrderMode == mode ? .on : .off
+        }
         for account in model.enabledAccounts {
             guard let item = accountItems[account.id] else { continue }
-            item.attributedTitle = rowTitle(account, isHighlighted: account.id == highlightedID)
+            item.attributedTitle = rowTitle(account)
+            (item.view as? AccountMenuRow)?.update(title: item.attributedTitle)
             updateAccessibility(item, account: account)
         }
         updatedItem?.title = strings.updated(model.accounts.compactMap(\.recordedAt).max(), isRefreshing: model.isRefreshing) ?? ""
@@ -119,51 +149,63 @@ final class UsageMenu: NSObject, NSMenuDelegate {
 
     private func accountItem(_ account: AccountUsage) -> NSMenuItem {
         let item = NSMenuItem(title: account.name, action: nil, keyEquivalent: "")
-        item.attributedTitle = rowTitle(account, isHighlighted: account.id == highlightedID)
+        item.attributedTitle = rowTitle(account)
         item.isEnabled = true
         item.submenu = detailMenu(account)
+        let row = AccountMenuRow(item: item)
+        row.onHover = { [weak self] isInside in self?.hoverAccount(account.id, isInside: isInside) }
+        item.view = row
         updateAccessibility(item, account: account)
         accountItems[account.id] = item
         return item
     }
 
+    private func hoverAccount(_ id: String, isInside: Bool) {
+        if isInside {
+            if id != openDetailID { openDetailID = nil }
+            setHighlighted(id)
+        } else if highlightedID == id, openDetailID != id {
+            setHighlighted(nil)
+        }
+    }
+
     private func updateAccessibility(_ item: NSMenuItem, account: AccountUsage) {
-        item.setAccessibilityLabel("\(account.name), \(strings.status(account))")
+        item.setAccessibilityLabel("\(account.name), \(strings.status(account, isRefreshing: model.isRefreshing))")
         let age = strings.readingAgeLabel(account, pollingMinutes: model.preferences.pollingMinutes)
         item.setAccessibilityValue([strings.usageFacts(account), strings.resetFacts(account), age].compactMap { $0 }.joined(separator: ". "))
     }
 
-    private func rowTitle(_ account: AccountUsage, isHighlighted: Bool) -> NSAttributedString {
-        let title = NSMutableAttributedString(attributedString: headline(account, isHighlighted: isHighlighted))
-        if let meter = NativeUsageMeter.attachment(account: account, width: Self.contentWidth, isHighlighted: isHighlighted) {
+    private func rowTitle(_ account: AccountUsage) -> NSAttributedString {
+        let title = NSMutableAttributedString(attributedString: headline(account))
+        if let meter = NativeUsageMeter.attachment(account: account, width: Self.contentWidth) {
             title.append(NSAttributedString(string: "\n"))
             title.append(styled(meter, spacingBefore: Self.lineGap))
         }
         title.append(NSAttributedString(string: "\n"))
-        title.append(caption(account, isHighlighted: isHighlighted))
+        title.append(caption(account))
         return title
     }
 
     /// Line 1: the account name, and the verdict in words at the trailing edge.
-    private func headline(_ account: AccountUsage, isHighlighted: Bool) -> NSAttributedString {
-        let color = isHighlighted ? NSColor.selectedMenuItemTextColor : RiskTextColor.verdict(account)
+    private func headline(_ account: AccountUsage) -> NSAttributedString {
+        let color = RiskTextColor.verdict(account)
         let line = NSMutableAttributedString(string: account.name,
             attributes: [.font: NSFont.menuFont(ofSize: 13),
-                         .foregroundColor: isHighlighted ? NSColor.selectedMenuItemTextColor : NSColor.labelColor,
+                         .foregroundColor: NSColor.labelColor,
                          .paragraphStyle: paragraph()])
-        line.append(NSAttributedString(string: "\t" + strings.status(account), attributes: [
+        line.append(NSAttributedString(string: "\t" + strings.status(account, isRefreshing: model.isRefreshing), attributes: [
             .font: NSFont.systemFont(ofSize: 13, weight: .semibold), .foregroundColor: color, .paragraphStyle: paragraph()]))
         return line
     }
 
     /// Line 3: regular weight, secondary colour, tabular figures. Nothing here is bold.
-    private func caption(_ account: AccountUsage, isHighlighted: Bool) -> NSAttributedString {
+    private func caption(_ account: AccountUsage) -> NSAttributedString {
         let font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
-        let line = NSMutableAttributedString(string: strings.menuCaption(account), attributes: [
-            .font: font, .foregroundColor: isHighlighted ? NSColor.selectedMenuItemTextColor : NSColor.secondaryLabelColor, .paragraphStyle: paragraph(spacingBefore: Self.lineGap)])
+        let line = NSMutableAttributedString(string: strings.menuCaption(account, isRefreshing: model.isRefreshing), attributes: [
+            .font: font, .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: paragraph(spacingBefore: Self.lineGap)])
         if let age = strings.readingAge(account, pollingMinutes: model.preferences.pollingMinutes) {
             line.append(NSAttributedString(string: ", " + age, attributes: [
-                .font: font, .foregroundColor: isHighlighted ? NSColor.selectedMenuItemTextColor : NSColor.systemOrange, .paragraphStyle: paragraph(spacingBefore: Self.lineGap)]))
+                .font: font, .foregroundColor: NSColor.systemOrange, .paragraphStyle: paragraph(spacingBefore: Self.lineGap)]))
         }
         return line
     }
@@ -186,19 +228,13 @@ final class UsageMenu: NSObject, NSMenuDelegate {
         let menu = NSMenu(title: account.name)
         menu.autoenablesItems = false
         menu.delegate = self
-        let pin = command("Show in Menu Bar", action: #selector(pinAccount(_:)))
-        pin.representedObject = account.id
-        pin.state = model.preferences.pinnedID == account.id ? .on : .off
-        let insets = DetailInsets.standard
         let selection = ChartSelection()
         let content = NSMenuItem()
-        let hosting = NSHostingView(rootView: AccountDetail(account: account, model: model, strings: strings, selection: selection, insets: insets)
+        let hosting = NSHostingView(rootView: AccountDetail(account: account, model: model, strings: strings, selection: selection)
             .environment(\.locale, strings.locale))
         hosting.setFrameSize(hosting.fittingSize)
         content.view = hosting
         menu.addItem(content)
-        menu.addItem(.separator())
-        menu.addItem(pin)
         return menu
     }
 
@@ -216,10 +252,7 @@ final class UsageMenu: NSObject, NSMenuDelegate {
     }
 
     private func addCommands(to menu: NSMenu) {
-        let automatic = command("Show Most at Risk", action: #selector(showAutomatic))
-        automatic.state = model.preferences.pinnedID == nil ? .on : .off
-        automatic.isEnabled = !model.enabledAccounts.isEmpty
-        menu.addItem(automatic)
+        menu.addItem(accountOrderItem())
         let refresh = command("Refresh Now", action: #selector(refresh), key: "r")
         refresh.isEnabled = !model.isRefreshing
         menu.addItem(refresh)
@@ -234,12 +267,25 @@ final class UsageMenu: NSObject, NSMenuDelegate {
         return item
     }
 
-    @objc private func pinAccount(_ sender: NSMenuItem) {
-        guard let id = sender.representedObject as? String else { return }
-        model.pin(model.preferences.pinnedID == id ? nil : id)
-        sender.state = model.preferences.pinnedID == id ? .on : .off
+    private func accountOrderItem() -> NSMenuItem {
+        let item = NSMenuItem(title: strings.text("Account order"), action: nil, keyEquivalent: "")
+        let choices = NSMenu()
+        for mode in [AccountOrderMode.mostAtRisk, .manual] {
+            let label = mode == .mostAtRisk ? "Most at risk first" : "Manual"
+            let choice = command(label, action: #selector(setAccountOrder(_:)))
+            choice.representedObject = mode.rawValue
+            choice.state = model.preferences.accountOrderMode == mode ? .on : .off
+            choices.addItem(choice)
+            orderItems[mode] = choice
+        }
+        item.submenu = choices
+        return item
     }
-    @objc private func showAutomatic() { model.pin(nil) }
+
+    @objc private func setAccountOrder(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String, let mode = AccountOrderMode(rawValue: raw) else { return }
+        model.setAccountOrderMode(mode)
+    }
     @objc private func refresh() { Task { await model.refresh() } }
     @objc private func settings() { openSettings() }
     @objc private func quit() { NSApplication.shared.terminate(nil) }
