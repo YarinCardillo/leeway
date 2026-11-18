@@ -178,12 +178,15 @@ public final class CoreUsageProvider: AppModel.UsageProvider {
     private func withoutNames(_ preferences: AppPreferences?) -> AppPreferences? { preferences.map(withoutNames) }
 
     public func removeAccount(_ account: AccountUsage) throws {
-        let book = try accountsCommand().edit { book in
+        var prunedPolicy: String?
+        // The pruned policy is validated inside the change, so a policy that cannot take it leaves the book as it was.
+        try accountsCommand().edit { book in
             if book.accounts.contains(where: { $0.id == account.id }) { try book.remove(id: account.id) }
             else if !account.folder.isEmpty { book.remove(folder: account.folder) }
             else { throw CoreError.accountNotFound }
+            prunedPolicy = try settings.pruned(removedIn: book)
         }
-        try settings.prune(removedIn: book)
+        if let prunedPolicy { try settings.write(prunedText: prunedPolicy) }
     }
 
     public func addFolder(_ path: String, provider: String) throws {

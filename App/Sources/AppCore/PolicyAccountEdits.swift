@@ -43,4 +43,12 @@ enum PolicyAccountEdits {
         if baseline?.reserveID != desired.reserveID { result.reserveID = desired.reserveID }
         return result
     }
+
+    /// Clears a reserve that points at an account that is gone, so the policy still validates.
+    static func clearingReserve(of account: AccountConfiguration, whenIn removed: Set<String>) -> AccountConfiguration {
+        guard let reserve = account.reserveAccount, removed.contains(reserve) else { return account }
+        return AccountConfiguration(id: account.id, provider: account.provider, label: account.label,
+            configDir: account.configDir, isEnabled: account.isEnabled, targetLow: account.targetLow,
+            targetHigh: account.targetHigh, reserveAccount: nil, overTarget: account.overTarget)
+    }
 }

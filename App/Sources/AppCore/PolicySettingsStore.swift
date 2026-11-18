@@ -38,17 +38,22 @@ public struct PolicySettingsStore {
         try PrivateStorage.write(Data(text.utf8), to: url)
     }
 
-    /// Drops policy accounts whose folder the book removed, leaving every other setting as it is.
-    public func prune(removedIn book: AccountBook) throws {
+    /// Drops policy accounts whose folder the book removed, leaving every other setting as it is. Reserves that
+    /// pointed at a dropped account are cleared. Returns the validated policy text, or nil when nothing changes.
+    public func pruned(removedIn book: AccountBook) throws -> String? {
         let current = try Policy.load(url, home: home)
         let kept = current.accounts.filter { !book.isRemoved($0.configDir) }
-        guard kept.count != current.accounts.count else { return }
+        guard kept.count != current.accounts.count else { return nil }
         let policy = Policy(port: current.port, pollMinutes: current.pollMinutes, codexModel: current.codexModel,
-                            roles: current.roles, accounts: kept, projects: current.projects, defaultAllowed: current.defaultAllowed)
+                            roles: current.roles, accounts: clearingReserves(kept, droppedFrom: current.accounts),
+                            projects: current.projects, defaultAllowed: current.defaultAllowed)
         let text = try PolicyText.encode(policy)
         _ = try Policy.parse(text, home: home)
-        try PrivateStorage.write(Data(text.utf8), to: url)
+        return text
     }
+
+    /// Writes policy text that `pruned(removedIn:)` returned.
+    public func write(prunedText text: String) throws { try PrivateStorage.write(Data(text.utf8), to: url) }
 
     private func mergedAccounts(_ configured: [AccountConfiguration], preferences: AppPreferences,
                                 baseline: AppPreferences?, readings: [AccountUsage],
@@ -64,7 +69,14 @@ public struct PolicySettingsStore {
                     configDir: URL(fileURLWithPath: path), isEnabled: account.isEnabled, targetLow: account.targetLow, targetHigh: account.targetHigh))
             }
         }
-        return try result.map { try applyPreferences(preferences, baseline: baseline, to: $0) }
+        let merged = try result.map { try applyPreferences(preferences, baseline: baseline, to: $0) }
+        return clearingReserves(merged, droppedFrom: configured)
+    }
+
+    private func clearingReserves(_ kept: [AccountConfiguration], droppedFrom all: [AccountConfiguration]) -> [AccountConfiguration] {
+        let keptIDs = Set(kept.map(\.id))
+        let dropped = Set(all.map(\.id)).subtracting(keptIDs)
+        return kept.map { PolicyAccountEdits.clearingReserve(of: $0, whenIn: dropped) }
     }
 
     private func applyPreferences(_ preferences: AppPreferences, baseline: AppPreferences?,
