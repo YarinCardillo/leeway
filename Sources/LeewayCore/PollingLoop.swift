@@ -15,7 +15,7 @@ public enum PollingLoop {
         let (events, send) = AsyncStream<Event>.makeStream()
         let updates = Task { if let changes { for await value in changes { send.yield(.interval(value)) } } }
         let requests = requestCheckSeconds.map { seconds in
-            serveRequests(every: seconds, wait: wait) { await provider.servePendingRefresh() }
+            serveRequests(every: seconds, wait: wait) { _ = await provider.servePendingRefresh() }
         }
         await refresh(provider, onError: onError)
         await deadlines(events, send: send, provider: provider, minutes: minutes,

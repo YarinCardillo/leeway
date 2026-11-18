@@ -4,14 +4,16 @@ public protocol UsageProvider: Sendable {
     func status(refresh: Bool) async throws -> StatusDocument
     func advise(_ request: AdviceRequest) async throws -> Advice
     /// Takes a reading now when another process asked for one through the shared store. Does nothing otherwise.
-    func servePendingRefresh() async
+    /// Returns whether it served a request, so a client knows the store may hold new readings.
+    @discardableResult
+    func servePendingRefresh() async -> Bool
     /// One scheduled round. Unlike `status(refresh: true)`, it never asks another process for a reading:
     /// a process that cannot poll leaves the store as it is.
     func pollRound() async throws
 }
 
 public extension UsageProvider {
-    func servePendingRefresh() async {}
+    func servePendingRefresh() async -> Bool { false }
     func pollRound() async throws { _ = try await status(refresh: true) }
 }
 
@@ -50,12 +52,18 @@ public actor UsageService: UsageProvider {
     }
 
     /// Serves a refresh another process requested through the store. Does nothing in a process that does not poll.
-    public func servePendingRefresh() async {
-        guard pollLock?.isHolding ?? true else { return }
+    /// Returns whether it found a request and took readings for it, even when some account failed, because the
+    /// store may then hold new readings.
+    @discardableResult
+    public func servePendingRefresh() async -> Bool {
+        guard pollLock?.isHolding ?? true else { return false }
+        var isServed = false
         do {
-            guard try store.hasRefreshRequest() else { return }
+            guard try store.hasRefreshRequest() else { return false }
+            isServed = true
             _ = try await status(refresh: true)
         } catch { if !Task.isCancelled { FileHandle.standardError.write(Data("requested quota refresh failed\n".utf8)) } }
+        return isServed
     }
 
     /// Reads quota when this process polls or can take the poll over. A scheduled round in a process that

@@ -15,6 +15,15 @@ public struct AccountBookFile: Sendable {
     /// Reads the book without locking: writes replace the file atomically, so a read is always whole.
     public func load() throws -> AccountBook { try AccountBook.load(url) }
 
+    /// A value that differs between two calls when the book file was replaced in between, empty while there is
+    /// no file. Writes replace the file, so its identity changes with every saved change.
+    public func changeMarker() -> String {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path) else { return "" }
+        let identity = (attributes[.systemFileNumber] as? NSNumber)?.stringValue ?? ""
+        let modified = (attributes[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+        return "\(identity)-\(modified)-\(attributes[.size] as? NSNumber ?? 0)"
+    }
+
     /// Runs one change on the latest book and saves it when it changed. Returns what the change returns.
     public func update<Result>(_ change: (inout AccountBook) throws -> Result) throws -> Result {
         let lockFile = url.deletingLastPathComponent().appendingPathComponent("accounts.lock")

@@ -84,7 +84,7 @@ private actor RequestCountingProvider: UsageProvider {
     private(set) var served = 0
     func status(refresh: Bool) async throws -> StatusDocument { StatusDocument(generatedAt: now) }
     func advise(_ request: AdviceRequest) async throws -> Advice { Advice(verdict: .go, reason: "fixture") }
-    func servePendingRefresh() async { served += 1 }
+    func servePendingRefresh() async -> Bool { served += 1; return true }
 }
 
 @Test(.timeLimit(.minutes(1))) func pollingLoop_ChecksForRequestsBetweenRounds() async throws {

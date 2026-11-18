@@ -13,6 +13,8 @@ public final class CoreUsageProvider: AppModel.UsageProvider {
     private var shutdownObserver: ProbeShutdownObserver?
     private let store: SnapshotStore?
     private var lastDataVersion: Int?
+    private var lastBookMarker: String
+    private var lastValidPolicy: Policy?
     private var storeObserver: (@MainActor () -> Void)?
     private var backgroundTask: Task<Void, Never>?
 
@@ -24,6 +26,8 @@ public final class CoreUsageProvider: AppModel.UsageProvider {
         self.environment = environment
         self.store = store
         lastDataVersion = try? store?.dataVersion()
+        lastBookMarker = AccountBookFile(url: AccountBook.fileURL(home: settings.home)).changeMarker()
+        lastValidPolicy = try? Policy.load(settings.url, home: settings.home)
         makeSource = source
     }
 
@@ -48,19 +52,19 @@ public final class CoreUsageProvider: AppModel.UsageProvider {
     }
 
     public func refresh() async throws -> [AccountUsage] {
-        let policy = try Policy.load(settings.url, home: settings.home)
+        let policy = try currentPolicy()
         return try readings(from: try await makeSource(policy).status(refresh: true), policy: policy)
     }
 
     public func scheduledRefresh() async throws -> [AccountUsage] {
-        let policy = try Policy.load(settings.url, home: settings.home)
+        let policy = try currentPolicy()
         let source = try makeSource(policy)
         try await source.pollRound()
         return try readings(from: try await source.status(refresh: false), policy: policy)
     }
 
     public func reload() async throws -> [AccountUsage] {
-        let policy = try Policy.load(settings.url, home: settings.home)
+        let policy = try currentPolicy()
         return try readings(from: try await makeSource(policy).status(refresh: false), policy: policy)
     }
 
@@ -73,20 +77,32 @@ public final class CoreUsageProvider: AppModel.UsageProvider {
         backgroundTask = PollingLoop.serveRequests(every: seconds) { [weak self] in await self?.serveBackgroundWork() }
     }
 
-    /// One round of the background loop. Tells the observer when stored readings changed, either through
-    /// another process's commit or through a refresh this round served.
+    /// One round of the background loop. Tells the observer when stored readings changed (another process's
+    /// commit, or a refresh this round served) or when another process replaced the account book.
     public func serveBackgroundWork() async {
-        guard let policy = try? Policy.load(settings.url, home: settings.home), let source = try? makeSource(policy) else { return }
-        let wasRequested = hasPendingRequest
-        await source.servePendingRefresh()
-        let wasServed = wasRequested && !hasPendingRequest
+        guard let policy = try? currentPolicy(), let source = try? makeSource(policy) else { return }
+        let wasServed = await source.servePendingRefresh()
         let version = try? store?.dataVersion()
         let hasForeignCommit = lastDataVersion != nil && version != lastDataVersion
         lastDataVersion = version
-        if wasServed || hasForeignCommit { storeObserver?() }
+        let marker = AccountBookFile(url: AccountBook.fileURL(home: settings.home)).changeMarker()
+        let hasNewBook = marker != lastBookMarker
+        lastBookMarker = marker
+        if wasServed || hasForeignCommit || hasNewBook { storeObserver?() }
     }
 
-    private var hasPendingRequest: Bool { (try? store?.hasRefreshRequest()) == true }
+    /// The policy as saved, or the last valid one while the saved file is rejected, so a bad edit never stops
+    /// polling. The error itself reaches the user through `loadSettings`.
+    private func currentPolicy() throws -> Policy {
+        do {
+            let policy = try Policy.load(settings.url, home: settings.home)
+            lastValidPolicy = policy
+            return policy
+        } catch {
+            guard let lastValidPolicy else { throw error }
+            return lastValidPolicy
+        }
+    }
 
     private func readings(from document: StatusDocument, policy: Policy) throws -> [AccountUsage] {
         let book = try accountsCommand(policy).current()

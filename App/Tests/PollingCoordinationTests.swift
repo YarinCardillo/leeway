@@ -24,6 +24,12 @@ private final class CountingRunner: ProcessRunner, @unchecked Sendable {
     }
 }
 
+private actor ServedElsewhereSource: LeewayCore.UsageProvider {
+    func status(refresh: Bool) async throws -> StatusDocument { StatusDocument(generatedAt: Date()) }
+    func advise(_ request: AdviceRequest) async throws -> Advice { Advice(verdict: .go, reason: "fixture") }
+    func servePendingRefresh() async -> Bool { true }
+}
+
 @MainActor
 final class PollingCoordinationTests: XCTestCase {
     private var home: URL!
@@ -129,5 +135,56 @@ final class PollingCoordinationTests: XCTestCase {
         _ = try await other.status(refresh: true)
         await provider.serveBackgroundWork()
         try await waitUntil { model.accounts.first?.weeklyUsed == 80 }
+    }
+
+    func testBackgroundWork_ARefreshTheSourceServed_TellsTheObserverWithoutRelyingOnAnEarlierLook() async throws {
+        let appStore = try SnapshotStore(path: databasePath)
+        let provider = CoreUsageProvider(settings: PolicySettingsStore(url: home.appendingPathComponent("policy.toml"), home: home),
+            store: appStore) { _ in ServedElsewhereSource() }
+        var changes = 0
+        provider.observeStoreChanges { changes += 1 }
+        XCTAssertFalse(try appStore.hasRefreshRequest())
+        await provider.serveBackgroundWork()
+        XCTAssertEqual(changes, 1)
+    }
+
+    func testBackgroundWork_PolicyFileBecomesInvalid_KeepsServingWithTheLastValidPolicy() async throws {
+        let appStore = try SnapshotStore(path: databasePath)
+        let appRunner = CountingRunner()
+        let provider = appProvider(try service(appRunner, store: appStore), store: appStore)
+        _ = try await provider.refresh()
+        try Data("[[accounts\nnot toml".utf8).write(to: home.appendingPathComponent("policy.toml"))
+        _ = try await service(CountingRunner()).status(refresh: true)
+        XCTAssertTrue(try appStore.hasRefreshRequest())
+        let callsBefore = appRunner.calls
+        await provider.serveBackgroundWork()
+        XCTAssertGreaterThan(appRunner.calls, callsBefore)
+        XCTAssertFalse(try appStore.hasRefreshRequest())
+    }
+
+    func testScheduledRefresh_PolicyFileBecomesInvalid_StillPollsWithTheLastValidPolicy() async throws {
+        let appStore = try SnapshotStore(path: databasePath)
+        let appRunner = CountingRunner()
+        let provider = appProvider(try service(appRunner, store: appStore), store: appStore)
+        _ = try await provider.refresh()
+        try Data("[[accounts\nnot toml".utf8).write(to: home.appendingPathComponent("policy.toml"))
+        let callsBefore = appRunner.calls
+        _ = try await provider.scheduledRefresh()
+        XCTAssertGreaterThan(appRunner.calls, callsBefore)
+    }
+
+    func testBackgroundWork_AccountBookReplacedByAnotherProcess_TellsTheObserver() async throws {
+        let appStore = try SnapshotStore(path: databasePath)
+        let provider = appProvider(try service(CountingRunner(), store: appStore), store: appStore)
+        var changes = 0
+        provider.observeStoreChanges { changes += 1 }
+        await provider.serveBackgroundWork()
+        XCTAssertEqual(changes, 0)
+        let command = AccountsCommand(home: home, policy: Policy(), environment: [:])
+        try command.edit { try $0.hide(id: "claude-default") }
+        await provider.serveBackgroundWork()
+        XCTAssertEqual(changes, 1)
+        await provider.serveBackgroundWork()
+        XCTAssertEqual(changes, 1)
     }
 }

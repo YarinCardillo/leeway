@@ -353,6 +353,20 @@ private struct SharedHome {
     #expect(holderRunner.calls.count == callsAfterServing)
 }
 
+@Test func servePendingRefresh_ReportsWhetherItServedARequest() async throws {
+    let shared = try SharedHome()
+    defer { try? FileManager.default.removeItem(at: shared.home) }
+    let holder = try shared.service(runner: FakeRunner(output: ProcessOutput(exitCode: 0, stdout: rateEvent(week: 0.5))),
+        lock: PollLock(path: shared.lockPath))
+    let other = try shared.service(runner: FakeRunner(), lock: PollLock(path: shared.lockPath))
+    _ = try await holder.status(refresh: true)
+    #expect(await holder.servePendingRefresh() == false)
+    _ = try await other.status(refresh: true)
+    #expect(await other.servePendingRefresh() == false)
+    #expect(await holder.servePendingRefresh() == true)
+    #expect(await holder.servePendingRefresh() == false)
+}
+
 @Test func statusWithoutAnyPoller_ReportsNoneAndDoesNotTakeTheLock() async throws {
     let shared = try SharedHome()
     defer { try? FileManager.default.removeItem(at: shared.home) }
