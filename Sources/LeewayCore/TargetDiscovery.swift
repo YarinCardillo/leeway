@@ -19,11 +19,8 @@ public enum TargetDiscovery {
             found.append(DiscoveredAccount(target: Target(id: account.id, provider: account.provider, label: label,
                 configDir: account.configDir, registered: true), origin: .added))
         }
-        for entry in book.accounts where entry.origin == .added && !entry.hidden {
-            let directory = URL(fileURLWithPath: entry.configDir)
-            guard isDirectory(directory), !book.isRemoved(directory), seen.insert(key(entry.provider, directory)).inserted else { continue }
-            let label = entry.label ?? AccountLabel.defaultName(provider: entry.provider, directory: directory, home: home)
-            found.append(DiscoveredAccount(target: Target(id: entry.id, provider: entry.provider, label: label, configDir: directory), origin: .added))
+        for entry in book.accounts where entry.origin == .added {
+            if let account = saved(entry, home: home, book: book, seen: &seen) { found.append(account) }
         }
         for (provider, directory, defaultID) in try automaticFolders(home: home, environment: environment)
         where isDirectory(directory) && !book.excludes(provider, directory) {
@@ -32,7 +29,20 @@ public enum TargetDiscovery {
             let label = book.label(provider, directory) ?? AccountLabel.defaultName(provider: provider, directory: directory, home: home)
             found.append(DiscoveredAccount(target: Target(id: id, provider: provider, label: label, configDir: directory), origin: .discovered))
         }
+        // Accounts found in another process environment stay in the book and stay visible in this one.
+        for entry in book.accounts where entry.origin != .added {
+            if let account = saved(entry, home: home, book: book, seen: &seen) { found.append(account) }
+        }
         return found
+    }
+
+    private static func saved(_ entry: AccountEntry, home: URL, book: AccountBook, seen: inout Set<String>) -> DiscoveredAccount? {
+        let directory = URL(fileURLWithPath: entry.configDir)
+        guard !entry.hidden, isDirectory(directory), !book.isRemoved(directory),
+              seen.insert(key(entry.provider, directory)).inserted else { return nil }
+        let label = entry.label ?? AccountLabel.defaultName(provider: entry.provider, directory: directory, home: home)
+        return DiscoveredAccount(target: Target(id: entry.id, provider: entry.provider, label: label, configDir: directory),
+            origin: entry.origin)
     }
 
     /// Includes historical IDs only for directories proven to resolve to this target.

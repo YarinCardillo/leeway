@@ -121,4 +121,23 @@ final class AccountBookAppTests: XCTestCase {
         XCTAssertEqual(model.accounts.map(\.id), ["high"])
         XCTAssertEqual(model.preferences.manualAccountOrder, ["high"])
     }
+
+    func testRefresh_HiddenPolicyAccount_IsNotRecreatedByThePolicyFallback() async throws {
+        try FileManager.default.createDirectory(at: policyFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try """
+        [[accounts]]
+        id = "work"
+        provider = "codex"
+        config_dir = "\(home.appendingPathComponent("extra").path)"
+        """.write(to: policyFile, atomically: true, encoding: .utf8)
+        let provider = makeProvider()
+        let shown = try await provider.refresh()
+        XCTAssertTrue(shown.contains { $0.id == "work" })
+        _ = try AccountsCommand(home: home, policy: try Policy.load(policyFile, home: home), environment: [:]).run(["hide", "work"])
+        let hidden = try await provider.refresh()
+        XCTAssertFalse(hidden.contains { $0.id == "work" })
+        _ = try AccountsCommand(home: home, policy: try Policy.load(policyFile, home: home), environment: [:]).run(["show", "work"])
+        let restored = try await provider.refresh()
+        XCTAssertTrue(restored.contains { $0.id == "work" })
+    }
 }

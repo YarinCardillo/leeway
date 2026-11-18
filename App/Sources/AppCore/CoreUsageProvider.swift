@@ -94,8 +94,8 @@ public final class CoreUsageProvider: AppModel.UsageProvider {
         let groupedPaths = lastPreferences?.accounts.values.flatMap(\.aliases) ?? []
         var knownPaths = Set(document.accounts.flatMap { [$0.configDir] + $0.aliases } + groupedPaths)
         for configuration in policy.accounts where !readings.contains(where: { $0.id == configuration.id })
-            && !knownPaths.contains(configuration.configDir.path) && !book.isRemoved(configuration.configDir) {
-            var account = lastReadings[configuration.id] ?? missing(configuration)
+            && !knownPaths.contains(configuration.configDir.path) && !book.excludes(configuration.provider, configuration.configDir) {
+            var account = lastReadings[configuration.id] ?? missing(configuration, book: book)
             account.isEnabled = configuration.isEnabled
             account.isStale = true
             account.isFolderMissing = !isDirectory(configuration.configDir)
@@ -120,6 +120,7 @@ public final class CoreUsageProvider: AppModel.UsageProvider {
             book = try command.edit { $0.importAppPreferences(addedFolders: stored.addedFolders.map {
                 ($0, stored.folderProviders[$0] == "codex" ? .codex : .claude) }, order: stored.manualAccountOrder) }
         }
+        for id in result.accounts.keys { result.accounts[id]?.name = book.accounts.first { $0.id == id }?.label }
         result.addedFolders = []
         result.folderProviders = [:]
         result.manualAccountOrder = book.ordered.map(\.id)
@@ -132,17 +133,49 @@ public final class CoreUsageProvider: AppModel.UsageProvider {
         if let previous = lastPreferences, previous.manualAccountOrder != preferences.manualAccountOrder {
             try command.edit { $0.setOrder(preferences.manualAccountOrder) }
         }
-        if let previous = lastPreferences, previous.accounts == preferences.accounts,
-           previous.pollingMinutes == preferences.pollingMinutes { return }
+        let baseline = baselinePreferences(accounts)
+        try applyRenames(preferences, baseline: baseline, accounts: accounts, command: command)
+        // Names live in the book alone, so the policy only ever sees the other settings.
+        let desired = withoutNames(preferences), saved = withoutNames(baseline)
+        if let previous = withoutNames(lastPreferences), previous.accounts == desired.accounts,
+           previous.pollingMinutes == desired.pollingMinutes { return }
+        try settings.save(desired, accounts: accounts, baseline: saved, book: command.current())
+        lastPreferences = preferences
+    }
+
+    private func baselinePreferences(_ accounts: [AccountUsage]) -> AppPreferences? {
         var baseline = lastPreferences
         for account in accounts where baseline?.accounts[account.id] == nil {
             var choice = AccountPreference(name: account.name, isEnabled: account.isEnabled, targetLow: account.targetLow, targetHigh: account.targetHigh)
             choice.aliases = account.aliases
             baseline?.accounts[account.id] = choice
         }
-        try settings.save(preferences, accounts: accounts, baseline: baseline, book: command.current())
-        lastPreferences = preferences
+        return baseline
     }
+
+    private func applyRenames(_ preferences: AppPreferences, baseline: AppPreferences?, accounts: [AccountUsage],
+                              command: AccountsCommand) throws {
+        guard let baseline else { return }
+        let renamed = accounts.compactMap { account -> (AccountUsage, String)? in
+            guard let name = preferences.accounts[account.id]?.name, name != baseline.accounts[account.id]?.name,
+                  !account.folder.isEmpty else { return nil }
+            return (account, name)
+        }
+        guard !renamed.isEmpty else { return }
+        try command.edit { book in
+            for (account, name) in renamed {
+                try book.rename(folder: account.folder, provider: account.source == "Codex" ? .codex : .claude, label: name)
+            }
+        }
+    }
+
+    private func withoutNames(_ preferences: AppPreferences) -> AppPreferences {
+        var result = preferences
+        for id in result.accounts.keys { result.accounts[id]?.name = nil }
+        return result
+    }
+
+    private func withoutNames(_ preferences: AppPreferences?) -> AppPreferences? { preferences.map(withoutNames) }
 
     public func removeAccount(_ account: AccountUsage) throws {
         let book = try accountsCommand().edit { book in
@@ -180,8 +213,9 @@ public final class CoreUsageProvider: AppModel.UsageProvider {
         return account
     }
 
-    private func missing(_ configuration: AccountConfiguration) -> AccountUsage {
-        var account = AccountUsage(id: configuration.id, name: configuration.label,
+    private func missing(_ configuration: AccountConfiguration, book: AccountBook) -> AccountUsage {
+        var account = AccountUsage(id: configuration.id,
+            name: book.label(configuration.provider, configuration.configDir) ?? configuration.label,
             source: configuration.provider == .codex ? "Codex" : "Claude Code", weeklyUsed: nil,
             fiveHourUsed: nil, reset: nil, fiveHourReset: nil, weekForecast: nil, recentForecast: nil,
             recordedAt: nil, history: [])

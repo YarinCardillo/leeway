@@ -109,6 +109,16 @@ public struct AccountBook: Codable, Equatable, Sendable {
         try update(id) { $0.label = trimmed }
     }
 
+    /// Gives the account at a folder a name of its own. A folder the book does not list yet, such as the
+    /// folder of a disabled policy account, is added first. A removed folder throws until it is added again.
+    public mutating func rename(folder: String, provider: Provider, label: String) throws {
+        if !hasDecision(folder: folder, provider: provider) { restore(folder: folder, provider: provider) }
+        guard let entry = accounts.first(where: { $0.provider == provider && Self.same($0.configDir, folder) }) else {
+            throw CoreError.accountNotFound
+        }
+        try rename(id: entry.id, label: label)
+    }
+
     /// Hides an account from every client and stops polling it.
     public mutating func hide(id: String) throws { try update(id) { $0.hidden = true } }
 
@@ -144,15 +154,35 @@ public struct AccountBook: Codable, Equatable, Sendable {
         }
     }
 
-    /// Copies the app's older preferences into the book once. Later calls change nothing.
+    /// Copies the app's older preferences into the book once. Later calls change nothing. A folder the book
+    /// already decided about (known, hidden or removed) keeps that decision.
     public mutating func importAppPreferences(addedFolders: [(path: String, provider: Provider)], order: [String]) {
         guard !appPreferencesImported else { return }
-        for folder in addedFolders { restore(folder: folder.path, provider: folder.provider) }
+        for folder in addedFolders where !hasDecision(folder: folder.path, provider: folder.provider) {
+            restore(folder: folder.path, provider: folder.provider)
+        }
         setOrder(order)
         appPreferencesImported = true
     }
 
+    /// Takes the name a policy account carries, when the book has no name for its folder yet. A policy label
+    /// equal to the folder's default name is no choice and is not taken. From then on the book alone names the account.
+    public mutating func adoptLabels(of configurations: [AccountConfiguration], home: URL) {
+        for configuration in configurations {
+            let isDefault = configuration.label == AccountLabel.defaultName(provider: configuration.provider,
+                directory: configuration.configDir, home: home)
+            guard !isDefault, let index = accounts.firstIndex(where: { $0.label == nil && $0.provider == configuration.provider
+                && Self.same($0.configDir, configuration.configDir.path) }) else { continue }
+            accounts[index].label = configuration.label
+        }
+    }
+
     // MARK: Helpers
+
+    private func hasDecision(folder: String, provider: Provider) -> Bool {
+        removedFolders.contains(Self.normalized(folder))
+            || accounts.contains { $0.provider == provider && Self.same($0.configDir, folder) }
+    }
 
     static func normalized(_ path: String) -> String {
         URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL.path

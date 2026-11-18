@@ -317,7 +317,9 @@ on stdout and exits 3. `version` and `help` still answer, so a caller can compar
 
 Every client reads one account book, `~/Library/Application Support/leeway/accounts.json`
 (under `--home` when given): `{"schema_version":1,"accounts":[{"id","provider","label","config_dir","origin","hidden","order"}],"removed_folders":[...]}`.
-`origin` is `discovered` or `added`. `label` is omitted until the user renames the account.
+`origin` is `discovered` or `added`. `label` is omitted until the user renames the account; the book is the
+only authority for names, and a policy account's explicit `label` is copied into it once, when the book has no
+name for that folder. Discovery reuses every saved entry whose folder exists, whichever process found it.
 Quota targets and routing stay in the policy file. Changes take a lock and replace the file atomically, so the
 app, the CLI and other apps can edit together. A build that finds a newer `schema_version` refuses
 with the exit 3 error above and never rewrites the file; a damaged file is an error, not replaced.

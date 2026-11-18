@@ -77,6 +77,7 @@ public actor UsageService: UsageProvider {
         try AccountBookFile(url: AccountBook.fileURL(home: home)).update { book in
             book.reconcile(with: try TargetDiscovery.discoverAccounts(home: home, accounts: policy.accounts,
                 environment: environment, book: book))
+            book.adoptLabels(of: policy.accounts, home: home)
         }
     }
 

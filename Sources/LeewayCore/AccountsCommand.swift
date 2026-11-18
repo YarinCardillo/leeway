@@ -71,6 +71,7 @@ public struct AccountsCommand: Sendable {
         var result = book
         result.reconcile(with: try TargetDiscovery.discoverAccounts(home: home, accounts: policy.accounts,
             environment: environment, book: result))
+        result.adoptLabels(of: policy.accounts, home: home)
         return result
     }
 

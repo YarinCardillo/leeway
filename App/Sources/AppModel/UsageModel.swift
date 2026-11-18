@@ -152,6 +152,9 @@ public final class UsageModel {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         updateAccount(id) { $0.name = trimmed }
+        guard settingsError == nil, let index = rawAccounts.firstIndex(where: { $0.id == id }) else { return }
+        rawAccounts[index].name = trimmed
+        applyPreferences()
     }
 
     /// Saves bounds together; changed handles use five-point steps while unedited policy fractions survive.
