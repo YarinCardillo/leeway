@@ -17,7 +17,7 @@ public enum Advisor {
         var blocks: [Block] = []
         for account in candidates {
             let action = policy.accounts.first { $0.id == account.id }?.overTarget ?? .switch
-            guard let block = block(account, action: action, now: document.generatedAt) else {
+            guard let block = block(account, history: document.history[account.id] ?? [], action: action, now: document.generatedAt) else {
                 return answer(request, policy, account, verdict: blocks.isEmpty ? .go : .switch,
                     reason: joined(blocks, suffix: room(account, switching: !blocks.isEmpty)))
             }
@@ -67,33 +67,13 @@ public enum Advisor {
 
     /// The account's block, with the earliest time it can be asked again. A five-hour block and an over-target
     /// week are independent, so when both hold the wait lasts until the later of the two clears.
-    private static func block(_ account: AccountStatus, action: TargetAction, now: Date) -> Block? {
+    private static func block(_ account: AccountStatus, history: [HistoryPoint], action: TargetAction, now: Date) -> Block? {
         let weekly = account.status == .over
-            ? Block(reason: weeklyReason(account), until: weeklyClearsAt(account, now: now), isWeekly: true) : nil
+            ? Block(reason: weeklyReason(account), until: WeeklyRetry.clearsAt(account, history: history, now: now), isWeekly: true) : nil
         guard let five = account.fiveHour.pct, five >= 95 else { return weekly }
         let weeklyUntil = action == .warn ? nil : weekly?.until
         return Block(reason: "\(account.label) five-hour window is at \(Int(five.rounded()))%",
             until: account.fiveHour.resetsAt.map { max($0, weeklyUntil ?? $0) }, isWeekly: false)
-    }
-
-    /// When an over-target week stops being over if nothing more is used. The week is over only while every
-    /// forecast is above the target, so it clears when the first forecast falls to it: the average pace falls as
-    /// the week passes, and the recent pace is projected over a shrinking remainder. Never later than the reset.
-    private static func weeklyClearsAt(_ account: AccountStatus, now: Date) -> Date? {
-        guard let reset = account.sevenDay.resetsAt else { return nil }
-        guard let used = account.sevenDay.pct, account.targetHigh > 0 else { return reset }
-        let averageCrossing = account.forecast.averagePctAtReset == nil ? nil
-            : reset.addingTimeInterval(-Forecaster.week * (1 - used / account.targetHigh))
-        let crossing = ([averageCrossing, recentCrossing(account, used: used, reset: reset, now: now)].compactMap { $0 } + [reset]).min()
-        return crossing.map { max($0, now) }
-    }
-
-    /// When the recent-pace forecast reaches the target, if the pace it projects stays as it is.
-    private static func recentCrossing(_ account: AccountStatus, used: Double, reset: Date, now: Date) -> Date? {
-        let remaining = reset.timeIntervalSince(now)
-        guard let recent = account.forecast.recentPctAtReset, remaining > 0, recent > used else { return nil }
-        let pace = (recent - used) / remaining
-        return reset.addingTimeInterval(-(account.targetHigh - used) / pace)
     }
 
     private static func weeklyReason(_ account: AccountStatus) -> String {

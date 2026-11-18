@@ -186,3 +186,38 @@ private func bothPacesAccount(previous: Double, at moment: Date = now, five: Dou
     let later = ask([bothPacesAccount(previous: 37, five: 97, fiveReset: now.addingTimeInterval(8 * hour))], target: 75)
     #expect(later.retryAt == now.addingTimeInterval(8 * hour))
 }
+
+/// An idle account halfway through its week: 57.6% six hours ago, 60% now, resetting in 84 hours.
+private let idleHistory = [HistoryPoint(at: now.addingTimeInterval(-6 * hour), pct: 57.6), HistoryPoint(at: now, pct: 60)]
+
+private func idleAccount(at moment: Date = now) -> AccountStatus {
+    let weekReset = now.addingTimeInterval(84 * hour)
+    return AccountStatus(id: "first", label: "First", provider: .claude, configDir: "/example/first",
+        sevenDay: UsageWindow(pct: 60, resetsAt: weekReset),
+        forecast: Forecaster.forecast(idleHistory, resetsAt: weekReset, now: moment), targetLow: 65, targetHigh: 100)
+}
+
+@Test func advise_RecentSamplesExpireBeforeTheRecentCrossing_WaitsForTheAverageCrossing() throws {
+    let account = idleAccount()
+    #expect(account.forecast.averagePctAtReset == 120)
+    #expect(account.forecast.recentPctAtReset == 93.6)
+    let result = ask([account], target: 75, history: ["first": idleHistory])
+    #expect(result.verdict == .wait)
+    let retry = try #require(result.retryAt)
+    #expect(abs(retry.timeIntervalSince(now) - 50.4 * hour) < 60)
+    let later = idleAccount(at: retry.addingTimeInterval(60))
+    #expect(later.forecast.recentPctAtReset == nil)
+    #expect(ask([later], target: 75, history: ["first": idleHistory]).verdict == .go)
+}
+
+@Test func advise_RecentCrossingBeforeTheSamplesExpire_StillWaitsForTheRecentCrossing() throws {
+    let weekReset = now.addingTimeInterval(84 * hour)
+    let points = [HistoryPoint(at: now.addingTimeInterval(-6 * hour), pct: 58.8), HistoryPoint(at: now, pct: 60)]
+    let account = AccountStatus(id: "first", label: "First", provider: .claude, configDir: "/example/first",
+        sevenDay: UsageWindow(pct: 60, resetsAt: weekReset),
+        forecast: Forecaster.forecast(points, resetsAt: weekReset, now: now), targetLow: 65, targetHigh: 100)
+    #expect(account.forecast.recentPctAtReset == 76.8)
+    let result = ask([account], target: 75, history: ["first": points])
+    let retry = try #require(result.retryAt)
+    #expect(abs(retry.timeIntervalSince(now) - 9 * hour) < 60)
+}

@@ -92,6 +92,8 @@ private func service(home: URL, store: SnapshotStore, runner: FakeRunner, clock:
         .status(refresh: true)
     let raw = try #require(JSONSerialization.jsonObject(with: JSONCodec.encoder().encode(document)) as? [String: Any])
     let history = try #require((raw["history"] as? [String: [[Any]]])?["claude-default"])
-    #expect(history.dropLast().allSatisfy { $0.count == 3 && $0[2] as? Bool == true })
+    let estimates = history.dropLast()
+    #expect(!estimates.isEmpty)
+    #expect(estimates.allSatisfy { $0.count == 3 && $0[2] as? Bool == true })
     #expect(history.last?.count == 2)
 }
