@@ -115,9 +115,15 @@ older than the polling interval are stale; Codex log readings retain their
 source time and are not stale merely because no new request has been made.
 
 The database carries its layout in SQLite's `user_version` (`SnapshotStore.schemaVersion`,
-1 today). Opening migrates an older file in place and stamps it. A file stamped higher than
+2 today: 1 added failure reasons and refresh requests, 2 added the `estimated` column on snapshots). Opening migrates an older file in place and stamps it. A file stamped higher than
 the build knows is refused with `CoreError.storeNewerThanBinary` before any change, so an
 older helper cannot corrupt data a newer one wrote. Raise the number with every migration.
+
+Estimated history: the first time an account is read, `UsageService` asks `Backfill` to
+build the current week from the account's transcripts (`TranscriptUsage` reads timestamps
+and token counts only) and stores the points with `estimated = 1` in the same transaction
+as the reading. They never count as readings (`latest`, `hasReadings`), and
+`Forecaster.settled` drops them once three real readings exist in the window.
 
 `PollLock` (an `flock` on `poll.lock` beside the history database) keeps one polling
 process at a time. `UsageService` given a lock reads quota only while it holds it;

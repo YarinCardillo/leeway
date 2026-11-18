@@ -18,3 +18,8 @@ import LeewayCore
     #expect(raw["status_schema"] as? Int == StatusDocument.currentSchemaVersion)
     #expect(try LeewayCLI.runVersion(["--json"]).contains("\"accounts_schema\":1"))
 }
+
+@Test func publicHistoryPointCanBeBuiltAsEstimated() {
+    #expect(HistoryPoint(at: Date(timeIntervalSince1970: 0), pct: 1).estimated == false)
+    #expect(HistoryPoint(at: Date(timeIntervalSince1970: 0), pct: 1, estimated: true).estimated)
+}

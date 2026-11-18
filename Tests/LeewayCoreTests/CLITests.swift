@@ -76,10 +76,11 @@ private struct MissingCLIProvider: UsageProvider {
     #expect(raw["schema_version"] as? Int == 1)
     #expect(raw["version"] as? String == LeewayVersion.current)
     #expect(raw["status_schema"] as? Int == StatusDocument.currentSchemaVersion)
-    #expect(raw["status_schema"] as? Int == 4)
+    #expect(raw["status_schema"] as? Int == 5)
     #expect(raw["accounts_schema"] as? Int == 1)
     #expect(raw["advice_schema"] as? Int == 2)
     #expect(raw["store_schema"] as? Int == SnapshotStore.schemaVersion)
+    #expect(raw["store_schema"] as? Int == 2)
     #expect(try LeewayCLI.runVersion([]) == "leeway " + LeewayVersion.current)
 }
 

@@ -34,7 +34,7 @@ class Advisor:
     def status(self) -> dict:
         """GET the current status snapshot without triggering any local probe."""
         result = self._request("GET", "/v1/status")
-        _version(result, versions=(1, 2, 3, 4))
+        _version(result, versions=(1, 2, 3, 4, 5))
         if not isinstance(result.get("accounts"), list):
             raise ValueError("invalid quota accounts")
         return result

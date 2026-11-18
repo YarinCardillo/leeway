@@ -83,7 +83,7 @@ public actor UsageService: UsageProvider {
             let local = try snapshot?.sevenDay.resetsAt.map { try mergedHistory(ids, resetsAt: $0) } ?? []
             let byTime = Dictionary(local.map { ($0.at, $0) }, uniquingKeysWith: { _, last in last })
             let start = snapshot?.sevenDay.resetsAt?.addingTimeInterval(-Forecaster.week) ?? now
-            let points = byTime.values.filter { $0.at >= start && $0.at <= now }.sorted { $0.at < $1.at }
+            let points = Forecaster.settled(byTime.values.filter { $0.at >= start && $0.at <= now }).sorted { $0.at < $1.at }
             accounts.append(try account(target, snapshot: snapshot, history: points, now: now, incomplete: reading.incomplete))
             history[target.id] = thinned(points)
         }
@@ -124,11 +124,28 @@ public actor UsageService: UsageProvider {
             for (id, snapshots, error) in readings {
                 sourceErrors[id] = error
                 if snapshots.isEmpty { try store.markFailed(id, at: clock(), reason: error) }
-                for snapshot in snapshots { try store.record(snapshot) }
+                let backfill = try await backfillPoints(targets.first { $0.id == id }, snapshots: snapshots)
+                for snapshot in snapshots { try store.record(snapshot, estimated: snapshot == snapshots.last ? backfill : []) }
             }
         }
         refreshTask = task
         try await waitForRefresh(task)
+    }
+
+    /// Estimates the current week for an account that has never been read, from its own transcripts.
+    /// Runs once per account: any earlier real reading under the account or its aliases skips it.
+    private func backfillPoints(_ target: Target?, snapshots: [Snapshot]) async throws -> [HistoryPoint] {
+        guard let target, snapshots.count == 1, let anchor = snapshots.first, let weekReset = anchor.sevenDay.resetsAt,
+              anchor.at > weekReset.addingTimeInterval(-Forecaster.week) else { return [] }
+        let ids = TargetDiscovery.historyIDs(for: target, home: home, accounts: policy.accounts)
+        guard try ids.allSatisfy({ try !store.hasReadings($0) }) else { return [] }
+        let window = DateInterval(start: weekReset.addingTimeInterval(-Forecaster.week), end: anchor.at)
+        let folder = target.configDir.appendingPathComponent(target.provider == .claude ? "projects" : "sessions")
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .utility).async {
+                continuation.resume(returning: Backfill.points(transcripts: folder, window: window, anchor: anchor))
+            }
+        }
     }
 
     private func waitForRefresh(_ task: Task<Void, Error>) async throws {

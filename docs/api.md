@@ -17,7 +17,7 @@ credentials, session content, or filesystem errors in error messages.
 
 Clients ignore additional response properties. Removing fields or changing
 meaning requires a schema version change. Status and refresh responses use
-`schema_version: 4`; advice uses version 2; errors retain version 1; headroom uses version 2. The URL remains
+`schema_version: 5`; advice uses version 2; errors retain version 1; headroom uses version 2. The URL remains
 `/v1` because this contract has not been published. Nullable response fields are present even when null.
 
 ## GET /v1/status
@@ -54,6 +54,14 @@ contain stdout, email addresses or authentication details. SQLite preserves read
 stale failure flags and the safe reason of the latest failure across restarts, so a
 process that did not poll shows the same reason as the one that did.
 
+Each `history` point is `[timestamp, percentage]`. A point estimated from the account's own
+session transcripts has a third element, `true`; real readings never carry it. A new account is
+backfilled once, at its first real reading, so its forecast works at once: the hourly token
+counts of the current week's transcripts (Claude `<config_dir>/projects`, Codex `<config_dir>/sessions`)
+are accumulated and scaled so the last estimated point equals that first reading's weekly
+percentage. Only timestamps and token counts are read. From the third real reading in the
+window the estimated points disappear from `history` and from the forecast.
+
 Only one process polls at a time. The polling process holds an exclusive lock on
 `~/Library/Application Support/leeway/poll.lock`; the system releases it when that
 process exits. Any other process, such as the CLI next to the menu bar app, serves
@@ -71,19 +79,19 @@ refresh).
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "StatusV4",
+  "title": "StatusV5",
   "type": "object",
   "required": ["schema_version", "generated_at", "poller", "accounts", "history"],
   "properties": {
-    "schema_version": {"const": 4},
+    "schema_version": {"const": 5},
     "generated_at": {"type": "string", "format": "date-time"},
     "poller": {"enum": ["self", "other", "none"]},
     "accounts": {"type": "array", "items": {"$ref": "#/$defs/account"}},
     "history": {"type": "object", "additionalProperties": {
       "type": "array", "items": {
         "type": "array", "prefixItems": [
-          {"type": "string", "format": "date-time"}, {"type": "number"}
-        ], "minItems": 2, "maxItems": 2
+          {"type": "string", "format": "date-time"}, {"type": "number"}, {"const": true}
+        ], "minItems": 2, "maxItems": 3
       }
     }}
   },
@@ -281,7 +289,7 @@ another process asked for a refresh through the store). `UsageService` implement
 injected ProcessRunner and clock, and an optional `PollLock` that makes it poll only
 while it holds the lock. SQLite and source access are serialized.
 `StatusDocument.accounts` contains `AccountStatus`; `history` maps account
-ids to `[HistoryPoint]` encoded as `[timestamp, percentage]` pairs.
+ids to `[HistoryPoint]` encoded as `[timestamp, percentage]` pairs, or `[timestamp, percentage, true]` for an estimate.
 
 CLI commands: `status [--json]`, `headroom --account <id-or-label> [--json]`,
 `advise --repo <path> --role <role> --task-class <class> [--agent <provider>]
@@ -296,7 +304,7 @@ last refresh when the validated interval changes, without one-second polling.
 `refresh` and the app's Refresh now explicitly opt in to a probe.
 
 `leeway version [--json]` prints the build's contract without opening the store:
-`{"schema_version":1,"version":"0.1.2","status_schema":4,"accounts_schema":1,"advice_schema":2,"store_schema":1}`.
+`{"schema_version":1,"version":"0.1.2","status_schema":5,"accounts_schema":1,"advice_schema":2,"store_schema":2}`.
 `store_schema` is the layout of `history.sqlite` this build reads and writes (SQLite
 `user_version`). A build whose `store_schema` is older than the file's refuses `status`,
 `refresh`, `headroom`, `advise` and `serve` before touching it, prints

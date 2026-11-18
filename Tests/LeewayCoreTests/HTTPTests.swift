@@ -11,7 +11,7 @@ struct FixtureProvider: UsageProvider {
     let router = HTTPRouter(provider: FixtureProvider())
     let status = await router.handle(HTTPRequest(method: "GET", path: "/v1/status", headers: ["host": "127.0.0.1:8799"]))
     #expect(status.status == 200)
-    #expect(try JSONCodec.decoder().decode(StatusDocument.self, from: status.body).schemaVersion == 4)
+    #expect(try JSONCodec.decoder().decode(StatusDocument.self, from: status.body).schemaVersion == 5)
     let body = Data("{\"repo\":\"/example\",\"role\":\"builder\",\"task_class\":\"integration\",\"agent\":\"claude\"}".utf8)
     let response = await router.handle(HTTPRequest(method: "POST", path: "/v1/advise", headers: ["host": "localhost:8799"], body: body))
     #expect(response.status == 200)
