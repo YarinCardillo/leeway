@@ -64,3 +64,15 @@ func store_OlderBuildStartingWhileANewerOneMigrates_NeverLowersTheStoredVersion(
     #expect(try !store.hasReadings("x"))
     #expect(try store.windowHistory("x", resetsAt: reset) == [estimate])
 }
+
+@Test func store_DataVersion_ChangesWhenAnotherConnectionCommitsAndNotForOwnWrites() throws {
+    let directory = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let path = directory.appendingPathComponent("history.sqlite").path
+    let watching = try SnapshotStore(path: path), writing = try SnapshotStore(path: path)
+    let before = try watching.dataVersion()
+    try watching.record(Snapshot(account: "a", at: now, sevenDay: UsageWindow(pct: 1, resetsAt: reset)))
+    #expect(try watching.dataVersion() == before)
+    try writing.record(Snapshot(account: "a", at: now.addingTimeInterval(60), sevenDay: UsageWindow(pct: 2, resetsAt: reset)))
+    #expect(try watching.dataVersion() != before)
+}

@@ -411,3 +411,45 @@ private func fiveHourOnlyEvent() -> String {
     #expect(account.sevenDay.pct == 40)
     #expect(account.error == .invalidOutput)
 }
+
+@Test(.timeLimit(.minutes(1))) func scheduledRoundOnAFollower_ReadsTheStoreAndNeverQueuesARequest() async throws {
+    let shared = try SharedHome()
+    defer { try? FileManager.default.removeItem(at: shared.home) }
+    let holderRunner = FakeRunner(output: ProcessOutput(exitCode: 0, stdout: rateEvent(week: 0.5)))
+    let holder = try shared.service(runner: holderRunner, lock: PollLock(path: shared.lockPath))
+    let followerRunner = FakeRunner()
+    let follower = try shared.service(runner: followerRunner, lock: PollLock(path: shared.lockPath))
+    _ = try await holder.status(refresh: true)
+    let rounds = AsyncStream<Void>.makeStream()
+    let polling = Task {
+        await PollingLoop.run(provider: follower, minutes: 15, clock: { now },
+            wait: { _ in rounds.1.yield(()); try await Task.sleep(for: .seconds(3600)) }, onError: { _ in })
+    }
+    var iterator = rounds.0.makeAsyncIterator()
+    _ = await iterator.next()
+    polling.cancel()
+    await polling.value
+    #expect(followerRunner.calls.isEmpty)
+    #expect(try !SnapshotStore(path: shared.databasePath).hasRefreshRequest())
+}
+
+@Test func scheduledRoundWhenTheHolderIsGone_TakesOverAndPolls() async throws {
+    let shared = try SharedHome()
+    defer { try? FileManager.default.removeItem(at: shared.home) }
+    let runner = FakeRunner(output: ProcessOutput(exitCode: 0, stdout: rateEvent(week: 0.7)))
+    let service = try shared.service(runner: runner, lock: PollLock(path: shared.lockPath))
+    try await service.pollRound()
+    #expect(!runner.calls.isEmpty)
+    #expect(try await service.status().poller == .thisProcess)
+}
+
+@Test func explicitRefreshOnAFollower_StillQueuesARequest() async throws {
+    let shared = try SharedHome()
+    defer { try? FileManager.default.removeItem(at: shared.home) }
+    let holder = try shared.service(runner: FakeRunner(output: ProcessOutput(exitCode: 0, stdout: rateEvent(week: 0.5))),
+        lock: PollLock(path: shared.lockPath))
+    let follower = try shared.service(runner: FakeRunner(), lock: PollLock(path: shared.lockPath))
+    _ = try await holder.status(refresh: true)
+    _ = try await follower.status(refresh: true)
+    #expect(try SnapshotStore(path: shared.databasePath).hasRefreshRequest())
+}

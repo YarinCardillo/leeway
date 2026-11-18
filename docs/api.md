@@ -67,11 +67,12 @@ Only one process polls at a time. The polling process holds an exclusive lock on
 process exits. Any other process, such as the CLI next to the menu bar app, serves
 the shared SQLite history and never launches a probe or reads provider logs while
 a poller exists, so the same account is never read twice in one round. A process
-without the lock tries to take it at each refresh round, so another process takes
-over within one round after the holder quits. A `refresh` in a process without the
+without the lock tries to take it at each scheduled round (`pollRound()`), so another process takes
+over within one round after the holder quits; a scheduled round in a process that cannot take the lock
+does nothing and never leaves a request. An explicit `refresh` in a process without the
 lock does not probe: it leaves a request in the store, returns the cached status, and the
-polling process takes a reading at its next check (the `serve` command checks every
-5 seconds). `poller` in the status document says which case applies to the
+polling process takes a reading at its next check (the `serve` command and the menu bar app
+check every 5 seconds, and the app shows the new reading when the poller stores it). `poller` in the status document says which case applies to the
 process that answered: `"self"` (this process holds the lock), `"other"` (another
 process holds it) or `"none"` (nobody is polling, so readings only change on an explicit
 refresh).
@@ -285,7 +286,8 @@ API value types are Codable and Sendable. Swift uses camelCase with
 snake_case JSON keys. Dates use Foundation Date, encoded as RFC 3339.
 `UsageProvider` exposes async throwing `status(refresh: Bool)` and
 `advise(_ request: AdviceRequest)`, plus `servePendingRefresh()` (a no-op unless
-another process asked for a refresh through the store). `UsageService` implements it with an
+another process asked for a refresh through the store) and `pollRound()` (one scheduled round: it
+reads quota only when this process polls or can take the poll over). `UsageService` implements it with an
 injected ProcessRunner and clock, and an optional `PollLock` that makes it poll only
 while it holds the lock. SQLite and source access are serialized.
 `StatusDocument.accounts` contains `AccountStatus`; `history` maps account

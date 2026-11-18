@@ -11,13 +11,23 @@ public final class CoreUsageProvider: AppModel.UsageProvider {
     private var lastPreferences: AppPreferences?
     private var lastReadings: [String: AccountUsage] = [:]
     private var shutdownObserver: ProbeShutdownObserver?
+    private let store: SnapshotStore?
+    private var lastDataVersion: Int?
+    private var storeObserver: (@MainActor () -> Void)?
+    private var backgroundTask: Task<Void, Never>?
 
-    public init(settings: PolicySettingsStore, environment: [String: String] = [:],
+    /// - Parameter store: The history database the source writes to. With it, `serveBackgroundWork` notices
+    ///   readings another process stored and refreshes it served.
+    public init(settings: PolicySettingsStore, environment: [String: String] = [:], store: SnapshotStore? = nil,
                 source: @escaping @Sendable (Policy) throws -> any LeewayCore.UsageProvider) {
         self.settings = settings
         self.environment = environment
+        self.store = store
+        lastDataVersion = try? store?.dataVersion()
         makeSource = source
     }
+
+    deinit { backgroundTask?.cancel() }
 
     /// Uses the same home-relative paths as the command-line service.
     public static func live(home: URL = FileManager.default.homeDirectoryForCurrentUser,
@@ -27,19 +37,58 @@ public final class CoreUsageProvider: AppModel.UsageProvider {
         let settings = PolicySettingsStore(url: home.appendingPathComponent(".config/leeway/policy.toml"), home: home)
         let processEnvironment = CLIEnvironment.forApplication(home: home, inherited: environment)
         let runner = SystemProcessRunner()
-        // One lock for the app's lifetime: each refresh builds a new service, but the app stays the poller.
         let pollLock = PollLock(path: directory.appendingPathComponent("poll.lock").path)
-        let provider = CoreUsageProvider(settings: settings, environment: processEnvironment) { policy in
-            UsageService(home: home, policy: policy, store: store, runner: runner, environment: processEnvironment,
-                         pollLock: pollLock)
-        }
+        // One service for the app's lifetime, so a refresh and a request served for another process share one probe.
+        let service = UsageService(home: home, policy: (try? Policy.load(settings.url, home: home)) ?? Policy(),
+            store: store, runner: runner, environment: processEnvironment, policyFile: settings.url, pollLock: pollLock)
+        let provider = CoreUsageProvider(settings: settings, environment: processEnvironment, store: store) { _ in service }
         provider.shutdownObserver = ProbeShutdownObserver(runner: runner)
+        provider.startBackgroundWork()
         return provider
     }
 
     public func refresh() async throws -> [AccountUsage] {
         let policy = try Policy.load(settings.url, home: settings.home)
-        let document = try await makeSource(policy).status(refresh: true)
+        return try readings(from: try await makeSource(policy).status(refresh: true), policy: policy)
+    }
+
+    public func scheduledRefresh() async throws -> [AccountUsage] {
+        let policy = try Policy.load(settings.url, home: settings.home)
+        let source = try makeSource(policy)
+        try await source.pollRound()
+        return try readings(from: try await source.status(refresh: false), policy: policy)
+    }
+
+    public func reload() async throws -> [AccountUsage] {
+        let policy = try Policy.load(settings.url, home: settings.home)
+        return try readings(from: try await makeSource(policy).status(refresh: false), policy: policy)
+    }
+
+    public func observeStoreChanges(_ onChange: @escaping @MainActor () -> Void) { storeObserver = onChange }
+
+    /// Starts the background loop: every few seconds it serves refreshes other processes queued while this
+    /// app holds the poll lock, and reports readings stored by anyone else. It stops with the provider.
+    public func startBackgroundWork(every seconds: TimeInterval = 5) {
+        backgroundTask?.cancel()
+        backgroundTask = PollingLoop.serveRequests(every: seconds) { [weak self] in await self?.serveBackgroundWork() }
+    }
+
+    /// One round of the background loop. Tells the observer when stored readings changed, either through
+    /// another process's commit or through a refresh this round served.
+    public func serveBackgroundWork() async {
+        guard let policy = try? Policy.load(settings.url, home: settings.home), let source = try? makeSource(policy) else { return }
+        let wasRequested = hasPendingRequest
+        await source.servePendingRefresh()
+        let wasServed = wasRequested && !hasPendingRequest
+        let version = try? store?.dataVersion()
+        let hasForeignCommit = lastDataVersion != nil && version != lastDataVersion
+        lastDataVersion = version
+        if wasServed || hasForeignCommit { storeObserver?() }
+    }
+
+    private var hasPendingRequest: Bool { (try? store?.hasRefreshRequest()) == true }
+
+    private func readings(from document: StatusDocument, policy: Policy) throws -> [AccountUsage] {
         let book = try accountsCommand(policy).current()
         var readings = CoreSnapshotMapper.map(document, home: settings.home)
         let groupedPaths = lastPreferences?.accounts.values.flatMap(\.aliases) ?? []

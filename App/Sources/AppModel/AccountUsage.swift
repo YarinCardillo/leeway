@@ -94,7 +94,14 @@ public struct AccountUsage: Identifiable, Sendable, Equatable {
 /// The app's boundary to the core. Refresh returns the last good data with per-account stale flags.
 @MainActor
 public protocol UsageProvider {
+    /// An explicit refresh the user asked for. A process that does not poll leaves a request for the one that does.
     func refresh() async throws -> [AccountUsage]
+    /// The timer's refresh. It takes a reading only in the process that polls and never asks another process for one.
+    func scheduledRefresh() async throws -> [AccountUsage]
+    /// Reads what is already stored without taking a reading.
+    func reload() async throws -> [AccountUsage]
+    /// Calls `onChange` when readings were stored that this provider has not returned yet.
+    func observeStoreChanges(_ onChange: @escaping @MainActor () -> Void)
     func loadSettings(_ stored: AppPreferences) throws -> AppPreferences
     func saveSettings(_ preferences: AppPreferences, accounts: [AccountUsage]) throws
     /// Removes an account from every client's list, whatever its origin. The folder stays gone until added again.
@@ -104,6 +111,9 @@ public protocol UsageProvider {
 }
 
 public extension UsageProvider {
+    func scheduledRefresh() async throws -> [AccountUsage] { try await refresh() }
+    func reload() async throws -> [AccountUsage] { try await refresh() }
+    func observeStoreChanges(_ onChange: @escaping @MainActor () -> Void) {}
     func loadSettings(_ stored: AppPreferences) throws -> AppPreferences { stored }
     func saveSettings(_ preferences: AppPreferences, accounts: [AccountUsage]) throws {}
     func removeAccount(_ account: AccountUsage) throws {}

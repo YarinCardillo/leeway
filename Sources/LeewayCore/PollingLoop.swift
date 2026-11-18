@@ -14,22 +14,26 @@ public enum PollingLoop {
         guard [5, 10, 15, 30].contains(minutes) else { onError("invalid polling interval"); return }
         let (events, send) = AsyncStream<Event>.makeStream()
         let updates = Task { if let changes { for await value in changes { send.yield(.interval(value)) } } }
-        let requests = serveRequests(provider, every: requestCheckSeconds, wait: wait)
+        let requests = requestCheckSeconds.map { seconds in
+            serveRequests(every: seconds, wait: wait) { await provider.servePendingRefresh() }
+        }
         await refresh(provider, onError: onError)
         await deadlines(events, send: send, provider: provider, minutes: minutes,
                         clock: clock, wait: wait, onError: onError)
-        updates.cancel(); requests.cancel(); send.finish()
+        updates.cancel(); requests?.cancel(); send.finish()
         await updates.value
-        await requests.value
+        await requests?.value
     }
 
-    private static func serveRequests(_ provider: any UsageProvider, every seconds: TimeInterval?,
-        wait: @escaping @Sendable (TimeInterval) async throws -> Void) -> Task<Void, Never> {
+    /// Runs `serve` every `seconds` until the returned task is cancelled. Clients that poll use it to
+    /// answer refreshes other processes queued in the shared store.
+    public static func serveRequests(every seconds: TimeInterval,
+        wait: @escaping @Sendable (TimeInterval) async throws -> Void = { try await Task.sleep(for: .seconds($0)) },
+        serve: @escaping @Sendable () async -> Void) -> Task<Void, Never> {
         Task {
-            guard let seconds else { return }
             while !Task.isCancelled {
                 do { try await wait(seconds) } catch { return }
-                await provider.servePendingRefresh()
+                await serve()
             }
         }
     }
@@ -63,7 +67,7 @@ public enum PollingLoop {
     }
 
     private static func refresh(_ provider: any UsageProvider, onError: @Sendable (String) -> Void) async {
-        do { _ = try await provider.status(refresh: true) }
+        do { try await provider.pollRound() }
         catch { if !Task.isCancelled { onError("quota refresh failed; retrying at the next interval") } }
     }
 

@@ -18,6 +18,7 @@ public final class UsageModel {
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private var pollingTask: Task<Void, Never>?
     @ObservationIgnored private var refreshAfterCurrent = false
+    @ObservationIgnored private var reloadAfterCurrent = false
     private static let preferencesKey = "app.preferences.v1"
     private static let accountListError = "Could not update the account list. Check that the folder exists and that ~/Library/Application Support/leeway is writable."
 
@@ -78,19 +79,39 @@ public final class UsageModel {
     }
 
     /// Coalesces concurrent requests and keeps last successful readings on failure.
-    public func refresh() async {
+    public func refresh() async { await refresh(.requested) }
+
+    private enum Fetch { case requested, scheduled, stored }
+
+    private func refresh(_ first: Fetch) async {
         guard !isRefreshing else { return }
         isRefreshing = true
         defer { isRefreshing = false; hasRefreshed = true }
-        repeat {
+        var fetch = first
+        while true {
             refreshAfterCurrent = false
-            await readAccounts()
-        } while refreshAfterCurrent && !Task.isCancelled
+            reloadAfterCurrent = false
+            await readAccounts(fetch)
+            guard !Task.isCancelled else { return }
+            if refreshAfterCurrent { fetch = .requested }
+            else if reloadAfterCurrent { fetch = .stored }
+            else { return }
+        }
     }
 
-    private func readAccounts() async {
+    /// Shows readings another process stored, without taking one. Never starts a spinner.
+    private func reloadStored() async {
+        guard !isRefreshing else { reloadAfterCurrent = true; return }
+        await readAccounts(.stored)
+    }
+
+    private func readAccounts(_ fetch: Fetch) async {
         do {
-            rawAccounts = try await provider.refresh()
+            switch fetch {
+            case .requested: rawAccounts = try await provider.refresh()
+            case .scheduled: rawAccounts = try await provider.scheduledRefresh()
+            case .stored: rawAccounts = try await provider.reload()
+            }
             preferences = try provider.loadSettings(preferences)
             if preferences.accountOrderMode == .manual {
                 let known = Set(preferences.manualAccountOrder)
@@ -111,14 +132,16 @@ public final class UsageModel {
         }
     }
 
+    /// Starts the scheduled rounds and follows readings that other processes store between them.
     public func startPolling() {
         pollingTask?.cancel()
+        provider.observeStoreChanges { [weak self] in Task { await self?.reloadStored() } }
         pollingTask = Task { [weak self] in
-            await self?.refresh()
+            await self?.refresh(.scheduled)
             while !Task.isCancelled {
                 guard let minutes = self?.preferences.pollingMinutes else { return }
                 do { try await Task.sleep(for: .seconds(minutes * 60)) } catch { return }
-                await self?.refresh()
+                await self?.refresh(.scheduled)
             }
         }
     }

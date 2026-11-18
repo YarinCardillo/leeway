@@ -5,10 +5,14 @@ public protocol UsageProvider: Sendable {
     func advise(_ request: AdviceRequest) async throws -> Advice
     /// Takes a reading now when another process asked for one through the shared store. Does nothing otherwise.
     func servePendingRefresh() async
+    /// One scheduled round. Unlike `status(refresh: true)`, it never asks another process for a reading:
+    /// a process that cannot poll leaves the store as it is.
+    func pollRound() async throws
 }
 
 public extension UsageProvider {
     func servePendingRefresh() async {}
+    func pollRound() async throws { _ = try await status(refresh: true) }
 }
 
 public actor UsageService: UsageProvider {
@@ -54,6 +58,14 @@ public actor UsageService: UsageProvider {
         } catch { if !Task.isCancelled { FileHandle.standardError.write(Data("requested quota refresh failed\n".utf8)) } }
     }
 
+    /// Reads quota when this process polls or can take the poll over. A scheduled round in a process that
+    /// does not poll does nothing, so rounds of several processes never add readings.
+    public func pollRound() async throws {
+        guard pollLock?.tryAcquire() ?? true else { return }
+        reloadPolicy()
+        try await poll(discoveredTargets())
+    }
+
     private func discoveredTargets() throws -> [Target] {
         let book = try AccountBook.load(AccountBook.fileURL(home: home))
         return try TargetDiscovery.discover(home: home, accounts: policy.accounts, environment: environment, book: book)
@@ -81,6 +93,10 @@ public actor UsageService: UsageProvider {
             try store.requestRefresh(at: clock())
             return
         }
+        try await poll(targets)
+    }
+
+    private func poll(_ targets: [Target]) async throws {
         try store.takeRefreshRequest()
         try recordAccounts()
         try await refreshReadings(targets)

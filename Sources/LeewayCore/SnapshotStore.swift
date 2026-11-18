@@ -170,6 +170,17 @@ public final class SnapshotStore: @unchecked Sendable {
         }
     }
 
+    /// A number that differs between two calls when another connection committed to the database in between.
+    /// Changes made through this connection do not change it. Clients compare it to notice readings stored by another process.
+    public func dataVersion() throws -> Int {
+        try lock.withLock {
+            let statement = try prepare("PRAGMA data_version")
+            defer { sqlite3_finalize(statement) }
+            guard try row(statement) else { throw CoreError.storage }
+            return Int(sqlite3_column_int64(statement, 0))
+        }
+    }
+
     /// Reports a source failure retained since the last successful refresh.
     public func hasFailure(_ account: String, after: Date? = nil) throws -> Bool {
         try lock.withLock {
