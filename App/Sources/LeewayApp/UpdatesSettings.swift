@@ -16,6 +16,8 @@ struct UpdatesSettings: View {
                     Text(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? strings.text("Unavailable"))
                         .monospacedDigit()
                 }
+                Link(strings.text("Source on GitHub"), destination: ProjectLinks.source)
+                    .foregroundStyle(.secondary)
                 LabeledContent(strings.text("Updates")) {
                     Button(strings.text("Check Now"), action: updates.checkNow)
                         .disabled(updates.isConfigured && !updates.canCheck)
