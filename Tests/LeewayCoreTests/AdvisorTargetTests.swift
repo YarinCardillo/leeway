@@ -3,7 +3,7 @@ import Testing
 @testable import LeewayCore
 
 @Test func advise_ForecastOverCallersTarget_WaitsForTheWeeklyReset() {
-    let result = ask([account("first", next: 95, targetHigh: 100)], target: 90)
+    let result = ask([account("first", week: 95, next: 95, targetHigh: 100)], target: 90)
     #expect(result.verdict == .wait)
     #expect(result.retryAt == reset)
     #expect(result.targetUsed == 90)
@@ -148,5 +148,41 @@ private func averageOnlyAccount(at moment: Date = now, five: Double = 5, fiveRes
     let sooner = ask([averageOnlyAccount(five: 97, fiveReset: now.addingTimeInterval(2 * hour))], target: 75)
     #expect(abs(try #require(sooner.retryAt).timeIntervalSince(now) - 5.6 * hour) < 60)
     let later = ask([averageOnlyAccount(five: 97, fiveReset: now.addingTimeInterval(8 * hour))], target: 75)
+    #expect(later.retryAt == now.addingTimeInterval(8 * hour))
+}
+
+/// Two readings six hours apart give both pace estimates: 40% halfway through the week after `previous` six hours ago.
+private func bothPacesAccount(previous: Double, at moment: Date = now, five: Double = 5,
+                              fiveReset: Date = now.addingTimeInterval(hour)) -> AccountStatus {
+    let weekReset = now.addingTimeInterval(84 * hour)
+    let points = [HistoryPoint(at: now.addingTimeInterval(-6 * hour), pct: previous), HistoryPoint(at: now, pct: 40)]
+    return AccountStatus(id: "first", label: "First", provider: .claude, configDir: "/example/first",
+        fiveHour: UsageWindow(pct: five, resetsAt: fiveReset), sevenDay: UsageWindow(pct: 40, resetsAt: weekReset),
+        forecast: Forecaster.forecast(points, resetsAt: weekReset, now: moment), targetLow: 65, targetHigh: 100)
+}
+
+@Test func advise_BothPacesOverCallersTarget_WaitsUntilTheFirstForecastFallsToIt() throws {
+    let account = bothPacesAccount(previous: 37)
+    #expect(account.forecast.averagePctAtReset == 80)
+    #expect(account.forecast.recentPctAtReset == 82)
+    let result = ask([account], target: 75)
+    #expect(result.verdict == .wait)
+    let retry = try #require(result.retryAt)
+    #expect(abs(retry.timeIntervalSince(now) - 5.6 * hour) < 60)
+    #expect(ask([bothPacesAccount(previous: 37, at: retry.addingTimeInterval(60))], target: 75).verdict == .go)
+}
+
+@Test func advise_RecentPaceFallsToTheTargetBeforeTheAverageDoes_WaitsOnTheRecentPace() throws {
+    let account = bothPacesAccount(previous: 37.4)
+    let result = ask([account], target: 75)
+    let retry = try #require(result.retryAt)
+    #expect(retry.timeIntervalSince(now) < 5 * hour)
+    #expect(ask([bothPacesAccount(previous: 37.4, at: retry.addingTimeInterval(60))], target: 75).verdict == .go)
+}
+
+@Test func advise_BothPacesWithAFiveHourBlock_WaitsForTheLaterOfTheTwo() throws {
+    let sooner = ask([bothPacesAccount(previous: 37, five: 97, fiveReset: now.addingTimeInterval(2 * hour))], target: 75)
+    #expect(abs(try #require(sooner.retryAt).timeIntervalSince(now) - 5.6 * hour) < 60)
+    let later = ask([bothPacesAccount(previous: 37, five: 97, fiveReset: now.addingTimeInterval(8 * hour))], target: 75)
     #expect(later.retryAt == now.addingTimeInterval(8 * hour))
 }

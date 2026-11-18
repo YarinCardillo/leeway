@@ -33,7 +33,7 @@ func ask(_ accounts: [AccountStatus], role: Role = .builder, agent: Provider? = 
     #expect(result.verdict == .switch)
     #expect(result.account == "second")
     #expect(result.reason.contains("75% target"))
-    let blocked = ask([account("first", next: 99), account("second", five: 97)])
+    let blocked = ask([account("first", week: 99, next: 99), account("second", five: 97)])
     #expect(blocked.verdict == .wait)
     #expect(blocked.retryAt == now.addingTimeInterval(hour))
 }

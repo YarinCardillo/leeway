@@ -253,8 +253,8 @@ Schema 2 over schema 1 only adds `target_used`: the weekly target high, in perce
 answered account was judged against (the caller's `target`, or the account's policy
 target high), null when no account is eligible. Clients that accept schema 1 must also
 accept 2 and ignore the new field. For an over-target week, `wait` carries as `retry_at` the earliest moment the forecast is
-under the line if nothing more is used: the weekly reset, or earlier when only the average pace
-drives the forecast and that pace falls to the target first. When a five-hour block holds too,
+under the line if nothing more is used: the weekly reset, or earlier when the average pace or
+the recent pace, whichever falls to the target first, brings the forecast to it. When a five-hour block holds too,
 `retry_at` is the later of the two.
 
 A five-hour reading at 95 or more blocks the candidate independently of the
