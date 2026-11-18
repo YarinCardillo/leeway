@@ -17,7 +17,7 @@ public enum Advisor {
         var blocks: [Block] = []
         for account in candidates {
             let action = policy.accounts.first { $0.id == account.id }?.overTarget ?? .switch
-            guard let block = block(account) else {
+            guard let block = block(account, action: action) else {
                 return answer(request, policy, account, verdict: blocks.isEmpty ? .go : .switch,
                     reason: joined(blocks, suffix: room(account, switching: !blocks.isEmpty)))
             }
@@ -65,15 +65,24 @@ public enum Advisor {
         return accounts.filter { seen.insert($0.id).inserted }
     }
 
-    private static func block(_ account: AccountStatus) -> Block? {
-        if let five = account.fiveHour.pct, five >= 95 {
-            return Block(reason: "\(account.label) five-hour window is at \(Int(five.rounded()))%",
-                until: account.fiveHour.resetsAt, isWeekly: false)
-        }
-        if account.status == .over {
-            return Block(reason: weeklyReason(account), until: account.sevenDay.resetsAt, isWeekly: true)
-        }
-        return nil
+    /// The account's block, with the earliest time it can be asked again. A five-hour block and an over-target
+    /// week are independent, so when both hold the wait lasts until the later of the two clears.
+    private static func block(_ account: AccountStatus, action: TargetAction) -> Block? {
+        let weekly = account.status == .over
+            ? Block(reason: weeklyReason(account), until: weeklyClearsAt(account), isWeekly: true) : nil
+        guard let five = account.fiveHour.pct, five >= 95 else { return weekly }
+        let weeklyUntil = action == .warn ? nil : weekly?.until
+        return Block(reason: "\(account.label) five-hour window is at \(Int(five.rounded()))%",
+            until: account.fiveHour.resetsAt.map { max($0, weeklyUntil ?? $0) }, isWeekly: false)
+    }
+
+    /// When an over-target week stops being over if nothing more is used: the weekly reset, unless only the
+    /// average pace drives the forecast. That pace falls as the week passes, so it reaches the target earlier.
+    private static func weeklyClearsAt(_ account: AccountStatus) -> Date? {
+        guard let reset = account.sevenDay.resetsAt else { return nil }
+        guard account.forecast.recentPctAtReset == nil, let used = account.sevenDay.pct, account.targetHigh > 0 else { return reset }
+        let crossing = reset.addingTimeInterval(-Forecaster.week * (1 - used / account.targetHigh))
+        return min(crossing, reset)
     }
 
     private static func weeklyReason(_ account: AccountStatus) -> String {

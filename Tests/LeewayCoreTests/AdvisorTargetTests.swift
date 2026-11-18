@@ -117,3 +117,36 @@ func cliAdvise_InvalidTargetOrCandidates_IsRefused(_ extra: [String]) async {
         _ = try await cli.run(["advise", "--repo", "/x", "--role", "builder", "--task-class", "design"] + extra)
     }
 }
+
+/// Two recent readings less than six hours apart give an average-only forecast: 40% used halfway through the week.
+private func averageOnlyAccount(at moment: Date = now, five: Double = 5, fiveReset: Date = now.addingTimeInterval(hour)) -> AccountStatus {
+    let weekReset = now.addingTimeInterval(84 * hour)
+    let points = [HistoryPoint(at: now.addingTimeInterval(-3 * hour), pct: 38), HistoryPoint(at: now, pct: 40)]
+    return AccountStatus(id: "first", label: "First", provider: .claude, configDir: "/example/first",
+        fiveHour: UsageWindow(pct: five, resetsAt: fiveReset), sevenDay: UsageWindow(pct: 40, resetsAt: weekReset),
+        forecast: Forecaster.forecast(points, resetsAt: weekReset, now: moment), targetLow: 65, targetHigh: 100)
+}
+
+@Test func advise_AverageOnlyForecastOverCallersTarget_WaitsUntilTheAverageFallsToIt() throws {
+    let account = averageOnlyAccount()
+    #expect(account.forecast.averagePctAtReset == 80)
+    #expect(account.forecast.recentPctAtReset == nil)
+    let result = ask([account], target: 75)
+    #expect(result.verdict == .wait)
+    let retry = try #require(result.retryAt)
+    #expect(abs(retry.timeIntervalSince(now) - 5.6 * hour) < 60)
+    let later = averageOnlyAccount(at: retry.addingTimeInterval(60))
+    #expect(ask([later], target: 75).verdict == .go)
+}
+
+@Test func advise_ForecastFarOverCallersTarget_StillWaitsForTheWeeklyReset() {
+    let account = averageOnlyAccount()
+    #expect(ask([account], target: 30).retryAt == now.addingTimeInterval(84 * hour))
+}
+
+@Test func advise_FiveHourBlockAndWeeklyCrossing_WaitsForTheLaterOfTheTwo() throws {
+    let sooner = ask([averageOnlyAccount(five: 97, fiveReset: now.addingTimeInterval(2 * hour))], target: 75)
+    #expect(abs(try #require(sooner.retryAt).timeIntervalSince(now) - 5.6 * hour) < 60)
+    let later = ask([averageOnlyAccount(five: 97, fiveReset: now.addingTimeInterval(8 * hour))], target: 75)
+    #expect(later.retryAt == now.addingTimeInterval(8 * hour))
+}
