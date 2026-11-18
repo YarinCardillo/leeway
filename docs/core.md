@@ -158,6 +158,12 @@ func advise(_ request: AdviceRequest) async throws -> Advice
 `AccountStatus`, and `StatusDocument` have public initializers for app mocks.
 Use `JSONCodec` for the documented snake_case fields and explicit nulls.
 
+`AccountBook` (with `AccountBookFile` for locked edits and `AccountsCommand` for the `accounts` verbs)
+is the one account list for every client; see "The account list" in `api.md`. The Leeway app keeps
+no account preferences of its own: folders it added and its manual order moved into the book once
+(the book's `app_preferences_imported` flag), while names, targets and reserves still live in the policy file.
+`TargetDiscovery.discover` takes the book and skips removed and hidden folders.
+
 The executable dispatches `integrations` before loading policy or quota data.
 The runtime receives literal arguments without a shell and preserves its exit
 status. It is found in app Resources, `../share/leeway/integrations` relative

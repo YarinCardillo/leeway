@@ -87,6 +87,7 @@ extension Localizer {
 
     func usageFacts(_ account: AccountUsage) -> String {
         guard let used = account.weeklyUsed else {
+            if account.isFolderMissing { return text("Folder not found. Remove this account in Settings.") }
             return readError(account) ?? text("No reading yet. Check that Claude Code or Codex is signed in, then choose Refresh Now.")
         }
         let target = targetRange(account)

@@ -41,7 +41,10 @@ struct LeewayMain {
         defer { runner.shutdown() }
         let service = try makeService(options, policy: policy, runner: runner)
         if options.arguments == ["serve"] { try await serve(service, policy: policy, options: options, runner: runner) }
-        else { print(try await LeewayCLI(provider: service).run(options.arguments)) }
+        else {
+            let accounts = AccountsCommand(home: options.home, policy: policy, environment: ProcessInfo.processInfo.environment)
+            print(try await LeewayCLI(provider: service, accounts: accounts).run(options.arguments))
+        }
     }
 
     private static func serve(_ service: UsageService, policy: Policy, options: LaunchOptions, runner: SystemProcessRunner) async throws {

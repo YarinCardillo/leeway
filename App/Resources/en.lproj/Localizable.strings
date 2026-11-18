@@ -129,3 +129,5 @@
 "At this pace, you run out on %@" = "At this pace, you run out on %@";
 "At this pace, room to spare at the reset" = "At this pace, room to spare at the reset";
 "%@, checked %@ ago" = "%@, checked %@ ago";
+"Folder not found" = "Folder not found";
+"Folder not found. Remove this account in Settings." = "Folder not found. Remove this account in Settings.";

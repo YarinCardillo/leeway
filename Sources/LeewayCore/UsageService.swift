@@ -38,7 +38,7 @@ public actor UsageService: UsageProvider {
     /// process. A refresh in any other process leaves a request in the store for the poller.
     public func status(refresh: Bool = false) async throws -> StatusDocument {
         reloadPolicy()
-        let targets = try TargetDiscovery.discover(home: home, accounts: policy.accounts, environment: environment)
+        let targets = try discoveredTargets()
         if refresh { try await refreshOrRequest(targets) }
         else if refreshTask == nil, !isPollerElsewhere { try await refreshReadings(targets.filter { $0.provider == .codex }) }
         reloadPolicy()
@@ -52,6 +52,20 @@ public actor UsageService: UsageProvider {
             guard try store.hasRefreshRequest() else { return }
             _ = try await status(refresh: true)
         } catch { if !Task.isCancelled { FileHandle.standardError.write(Data("requested quota refresh failed\n".utf8)) } }
+    }
+
+    private func discoveredTargets() throws -> [Target] {
+        let book = try AccountBook.load(AccountBook.fileURL(home: home))
+        return try TargetDiscovery.discover(home: home, accounts: policy.accounts, environment: environment, book: book)
+    }
+
+    /// Writes the accounts discovery finds into the shared book, so a folder that later disappears stays
+    /// listed and can be removed. Only the polling process does this.
+    private func recordAccounts() throws {
+        try AccountBookFile(url: AccountBook.fileURL(home: home)).update { book in
+            book.reconcile(with: try TargetDiscovery.discoverAccounts(home: home, accounts: policy.accounts,
+                environment: environment, book: book))
+        }
     }
 
     private var isPollerElsewhere: Bool { pollLock.map { !$0.isHolding && $0.isHeldElsewhere() } ?? false }
@@ -68,11 +82,12 @@ public actor UsageService: UsageProvider {
             return
         }
         try store.takeRefreshRequest()
+        try recordAccounts()
         try await refreshReadings(targets)
     }
 
     private func cachedStatus() throws -> StatusDocument {
-        let targets = try TargetDiscovery.discover(home: home, accounts: policy.accounts, environment: environment)
+        let targets = try discoveredTargets()
         let now = clock()
         var accounts: [AccountStatus] = [], history: [String: [HistoryPoint]] = [:]
         for target in targets {

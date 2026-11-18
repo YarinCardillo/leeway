@@ -129,3 +129,5 @@
 "At this pace, you run out on %@" = "A questo ritmo, finisci la quota %@";
 "At this pace, room to spare at the reset" = "A questo ritmo, ti avanza quota al reset";
 "%@, checked %@ ago" = "%@, controllato %@ fa";
+"Folder not found" = "Cartella non trovata";
+"Folder not found. Remove this account in Settings." = "Cartella non trovata. Rimuovi questo account nelle Impostazioni.";

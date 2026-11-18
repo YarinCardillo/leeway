@@ -8,9 +8,10 @@ public protocol IntegrationCommand: Sendable {
 public struct LeewayCLI: Sendable {
     private let provider: any UsageProvider
     private let integrations: (any IntegrationCommand)?
+    private let accounts: AccountsCommand?
 
-    public init(provider: any UsageProvider, integrations: (any IntegrationCommand)? = nil) {
-        self.provider = provider; self.integrations = integrations
+    public init(provider: any UsageProvider, integrations: (any IntegrationCommand)? = nil, accounts: AccountsCommand? = nil) {
+        self.provider = provider; self.integrations = integrations; self.accounts = accounts
     }
 
     /// Executes an injected CLI command. Returns stdout text and throws safe input/service errors.
@@ -20,6 +21,10 @@ public struct LeewayCLI: Sendable {
         if command == "integrations" {
             guard let integrations else { throw CoreError.invalidRequest("Integration commands are unavailable in this build. Install the full Leeway CLI.") }
             return try await integrations.run(Array(arguments.dropFirst()))
+        }
+        if command == "accounts" {
+            guard let accounts else { throw CoreError.invalidRequest("Account commands are unavailable in this build.") }
+            return try accounts.run(Array(arguments.dropFirst()))
         }
         if command == "version" { return try Self.runVersion(Array(arguments.dropFirst())) }
         let options = try options(Array(arguments.dropFirst()))
@@ -56,6 +61,8 @@ public struct LeewayCLI: Sendable {
                                  or against a landing target of 1 to 100 percent.
       refresh [--json]            Take a new reading, keeping good data on failure.
       version [--json]            Show the version and the contract versions it speaks.
+      accounts list|rename ID NAME|hide ID|show ID|remove ID|add FOLDER [--provider claude|codex] [--json]
+                                 Manage the account list every Leeway client shares.
       serve                      Poll usage and serve the API on 127.0.0.1.
       integrations install|uninstall
                                  Add or remove opt-in agent hooks.

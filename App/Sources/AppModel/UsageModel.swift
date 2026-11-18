@@ -19,6 +19,7 @@ public final class UsageModel {
     @ObservationIgnored private var pollingTask: Task<Void, Never>?
     @ObservationIgnored private var refreshAfterCurrent = false
     private static let preferencesKey = "app.preferences.v1"
+    private static let accountListError = "Could not update the account list. Check that the folder exists and that ~/Library/Application Support/leeway is writable."
 
     public init(provider: any UsageProvider, defaults: UserDefaults = .standard) {
         self.provider = provider
@@ -165,14 +166,22 @@ public final class UsageModel {
     public func setLanguage(_ language: AppLanguage) { preferences.language = language; save() }
     public func setAutomaticUpdates(_ isEnabled: Bool) { preferences.updatesAutomatically = isEnabled; save() }
 
+    /// Adds a folder to the account list every Leeway client shares. A refresh then reads it.
     public func addFolder(_ path: String, provider: String = "claude") {
-        guard !preferences.addedFolders.contains(path) else { return }
-        preferences.addedFolders.append(path)
-        preferences.folderProviders[path] = provider
-        save()
+        do { try self.provider.addFolder(path, provider: provider); settingsError = nil }
+        catch { settingsError = Self.accountListError }
     }
 
-    public func removeFolder(_ path: String) { preferences.addedFolders.removeAll { $0 == path }; save() }
+    /// Removes an account of any origin, including one whose folder is gone. Its folder stays out of
+    /// discovery until it is added again.
+    public func removeAccount(_ account: AccountUsage) {
+        do { try provider.removeAccount(account) }
+        catch { settingsError = Self.accountListError; return }
+        rawAccounts.removeAll { $0.id == account.id }
+        preferences.accounts[account.id] = nil
+        preferences.manualAccountOrder.removeAll { $0 == account.id }
+        applyPreferences()
+    }
 
     private func updateAccount(_ id: String, change: (inout AccountPreference) -> Void) {
         let account = rawAccounts.first { $0.id == id }

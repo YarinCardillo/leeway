@@ -41,6 +41,8 @@ public struct AccountUsage: Identifiable, Sendable, Equatable {
     public var folder: String = ""
     public var aliases: [String] = []
     public var defaultName: String?
+    /// True when the account's folder no longer exists, so no reading can ever arrive.
+    public var isFolderMissing = false
 
     public var hasDefaultName: Bool { name == defaultName }
 
@@ -95,9 +97,15 @@ public protocol UsageProvider {
     func refresh() async throws -> [AccountUsage]
     func loadSettings(_ stored: AppPreferences) throws -> AppPreferences
     func saveSettings(_ preferences: AppPreferences, accounts: [AccountUsage]) throws
+    /// Removes an account from every client's list, whatever its origin. The folder stays gone until added again.
+    func removeAccount(_ account: AccountUsage) throws
+    /// Adds a folder to the shared account list.
+    func addFolder(_ path: String, provider: String) throws
 }
 
 public extension UsageProvider {
     func loadSettings(_ stored: AppPreferences) throws -> AppPreferences { stored }
     func saveSettings(_ preferences: AppPreferences, accounts: [AccountUsage]) throws {}
+    func removeAccount(_ account: AccountUsage) throws {}
+    func addFolder(_ path: String, provider: String) throws {}
 }

@@ -311,6 +311,24 @@ last refresh when the validated interval changes, without one-second polling.
 `{"schema_version":1,"error":"this leeway is older than the data it would read; use the newer one"}`
 on stdout and exits 3. `version` and `help` still answer, so a caller can compare builds.
 
+### The account list
+
+Every client reads one account book, `~/Library/Application Support/leeway/accounts.json`
+(under `--home` when given): `{"schema_version":1,"accounts":[{"id","provider","label","config_dir","origin","hidden","order"}],"removed_folders":[...]}`.
+`origin` is `discovered` or `added`. `label` is omitted until the user renames the account.
+Quota targets and routing stay in the policy file. Changes take a lock and replace the file atomically, so the
+app, the CLI and other apps can edit together. A build that finds a newer `schema_version` refuses
+with the exit 3 error above and never rewrites the file; a damaged file is an error, not replaced.
+
+`leeway accounts list|rename <id> <name>|hide <id>|show <id>|remove <id>|add <folder> [--provider claude|codex] [--json]`
+print the updated list. With `--json` it is `{"schema_version":1,"accounts":[{"id","provider","label","origin","hidden","folder_exists","order"}]}`
+in display order. Rows carry no email, no folder path and nothing read from the folder.
+`hide` keeps the row but stops showing and polling the account until `show`. `remove` works for any
+origin and remembers the folder, so discovery never brings it back; `add` of that folder clears the memory.
+`folder_exists` is false for a row whose folder is gone, which stays listed so it can be removed.
+The polling process records newly discovered accounts in the book, so a folder that later disappears stays
+listed. `status` and `refresh` omit hidden and removed accounts.
+
 ### Bundling the helper
 
 An app that ships its own `leeway` runs `version --json` on its copy and on the installed
