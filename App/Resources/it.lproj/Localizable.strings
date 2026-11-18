@@ -113,6 +113,8 @@
 "read_error.timeout" = "Lettura scaduta";
 "read_error.not_signed_in" = "Accesso richiesto";
 "read_error.invalid_output" = "Dati quota non validi";
+"read_error.probe_failed" = "Lettura non riuscita";
+"read_error.no_rate_limit_event" = "Nessun dato di quota nell'output";
 
 "Forecast unavailable" = "Previsione non disponibile";
 "target %@" = "target %@";

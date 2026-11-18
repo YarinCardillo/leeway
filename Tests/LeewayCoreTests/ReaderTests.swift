@@ -31,7 +31,7 @@ func rateEvent(week: Double = 0.94, weekReset: Date = reset) -> String {
         "PATH": "/usr/bin", "ANTHROPIC_API_KEY": "test-key", "ANTHROPIC_AUTH_TOKEN": "test-token",
         "CLAUDE_CODE_OAUTH_TOKEN": "test-token", "ANTHROPIC_BASE_URL": "https://example.invalid",
         "CLAUDE_CODE_USE_BEDROCK": "1", "CLAUDE_CODE_USE_VERTEX": "1"], clock: { now })
-    let snapshot = try #require(try reader.read(target))
+    let snapshot = try reader.read(target)
     #expect(snapshot.sevenDay.pct == 94)
     #expect(snapshot.fiveHour.pct == 5)
     #expect(snapshot.plan == "max")
@@ -50,18 +50,63 @@ func rateEvent(week: Double = 0.94, weekReset: Date = reset) -> String {
     let home = FileManager.default.homeDirectoryForCurrentUser
     let target = Target(id: "first", provider: .claude, label: "First", configDir: home.appendingPathComponent(".claude"))
     let reader = ClaudeReader(runner: runner, home: home, environment: ["CLAUDE_CONFIG_DIR": "/other"], clock: { now })
-    #expect(try reader.read(target)?.sevenDay.pct == 20)
+    #expect(try reader.read(target).sevenDay.pct == 20)
     #expect(runner.calls.allSatisfy { $0.environment["CLAUDE_CONFIG_DIR"] == nil })
 }
 
-@Test func malformedOrBooleanUsageIsUnknownAndLaunchFailureIsSafe() throws {
+@Test func malformedOrBooleanUsageIsInvalidOutputAndLaunchFailureIsSafe() throws {
     let home = URL(fileURLWithPath: "/example")
     let target = Target(id: "first", provider: .claude, label: "First", configDir: home)
     let output = "{\"type\":\"rate_limit_event\",\"rate_limit_info\":{\"unifiedWindows\":{\"seven_day\":{\"utilization\":true}}}}"
     let reader = ClaudeReader(runner: FakeRunner(output: ProcessOutput(exitCode: 0, stdout: output)), home: home, environment: [:], clock: { now })
-    #expect(try reader.read(target)?.sevenDay.pct == nil)
+    #expect(throws: AccountReadError.invalidOutput) { try reader.read(target) }
     let missing = ClaudeReader(runner: FakeRunner(output: ProcessOutput(exitCode: 127, stdout: "private output")), home: home, environment: [:], clock: { now })
     #expect(throws: AccountReadError.cliMissing) { try missing.read(target) }
+}
+
+private struct ScriptedRunner: ProcessRunner {
+    let auth: ProcessOutput
+    let probe: ProcessOutput
+    func run(_ request: ProcessRequest) throws -> ProcessOutput {
+        request.arguments.first == "auth" ? auth : probe
+    }
+}
+
+private func failingReader(auth: ProcessOutput = ProcessOutput(exitCode: 0, stdout: "{\"loggedIn\":true}"),
+                           probe: ProcessOutput) -> (ClaudeReader, Target) {
+    let home = URL(fileURLWithPath: "/example")
+    let target = Target(id: "first", provider: .claude, label: "First", configDir: home.appendingPathComponent("alternate"))
+    let reader = ClaudeReader(runner: ScriptedRunner(auth: auth, probe: probe), home: home, environment: [:], clock: { now })
+    return (reader, target)
+}
+
+@Test func probeExitingNonZeroWithoutAnEventThrowsProbeFailed() {
+    let (reader, target) = failingReader(probe: ProcessOutput(exitCode: 1, stdout: "private output"))
+    #expect(throws: AccountReadError.probeFailed) { try reader.read(target) }
+}
+
+@Test func probeSucceedingWithoutAnEventThrowsNoRateLimitEvent() {
+    let (reader, target) = failingReader(probe: ProcessOutput(exitCode: 0, stdout: "{\"type\":\"result\"}"))
+    #expect(throws: AccountReadError.noRateLimitEvent) { try reader.read(target) }
+}
+
+@Test func loggedOutAuthStatusThrowsSignedOutBeforeTheProbeRuns() {
+    let runner = FakeAuthRecorder()
+    let home = URL(fileURLWithPath: "/example")
+    let target = Target(id: "first", provider: .claude, label: "First", configDir: home)
+    let reader = ClaudeReader(runner: runner, home: home, environment: [:], clock: { now })
+    #expect(throws: AccountReadError.notSignedIn) { try reader.read(target) }
+    #expect(runner.commands == ["auth"])
+}
+
+private final class FakeAuthRecorder: ProcessRunner, @unchecked Sendable {
+    private let lock = NSLock()
+    private var seen: [String] = []
+    var commands: [String] { lock.withLock { seen } }
+    func run(_ request: ProcessRequest) throws -> ProcessOutput {
+        lock.withLock { seen.append(request.arguments.first ?? "") }
+        return ProcessOutput(exitCode: 1, stdout: "{\"loggedIn\":false}")
+    }
 }
 
 func codexLine(at: Date = now, week: Double = 9, reversed: Bool = false) -> String {
@@ -112,7 +157,7 @@ func claudeRejectsOutOfRangeUtilization(_ used: Double) throws {
     let home = URL(fileURLWithPath: "/example")
     let target = Target(id: "first", provider: .claude, label: "First", configDir: home)
     let reader = ClaudeReader(runner: FakeRunner(output: ProcessOutput(exitCode: 0, stdout: output)), home: home, environment: [:], clock: { now })
-    #expect(try reader.read(target) == nil)
+    #expect(throws: AccountReadError.invalidOutput) { try reader.read(target) }
 }
 
 @Test func finding8AlternateHomeSelectsItsClaudeDirectoryForBothProcesses() throws {
@@ -123,7 +168,7 @@ func claudeRejectsOutOfRangeUtilization(_ used: Double) throws {
     let runner = FakeRunner(output: ProcessOutput(exitCode: 0, stdout: rateEvent()))
     let reader = ClaudeReader(runner: runner, home: home,
         environment: ["CLAUDE_CONFIG_DIR": "/wrong-account"], clock: { now })
-    #expect(try reader.read(target)?.sevenDay.pct == 94)
+    #expect(try reader.read(target).sevenDay.pct == 94)
     #expect(runner.calls.count == 2)
     #expect(runner.calls.allSatisfy { $0.environment["CLAUDE_CONFIG_DIR"] == directory.path })
 }

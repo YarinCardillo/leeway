@@ -47,8 +47,9 @@ App `recorded_at` is mapped directly from `as_of`. Events without a valid percen
 readings, as are percentages outside 0 to 100. Expired windows have null percentage and reset.
 
 `error` is a safe per-account reason for the latest refresh in this service:
-`cli_missing`, `timeout`, `not_signed_in`, or `invalid_output`; successful readings
-clear it. Cached readings and their timestamps survive a failure. Reasons never
+`cli_missing`, `timeout`, `not_signed_in`, `invalid_output`, `probe_failed` (the Claude probe
+exited with an error and printed no usage event) or `no_rate_limit_event` (the probe ended
+without printing a usage event); successful readings clear it. Cached readings and their timestamps survive a failure. Reasons never
 contain stdout, email addresses or authentication details. Detailed reasons are
 session-local; SQLite preserves readings and stale failure flags across restarts.
 The app and the advisor poll independently.
@@ -111,7 +112,7 @@ The app and the advisor poll independently.
         "forecast": {"$ref": "#/$defs/forecast"},
         "source": {"enum": ["probe", "codex-log", null]},
         "stale": {"type": "boolean"},
-        "error": {"enum": ["cli_missing", "timeout", "not_signed_in", "invalid_output", null]},
+        "error": {"enum": ["cli_missing", "timeout", "not_signed_in", "invalid_output", "probe_failed", "no_rate_limit_event", null]},
         "as_of": {"$ref": "#/$defs/moment"},
         "target_low": {"type": "number", "minimum": 0, "maximum": 100},
         "target_high": {"type": "number", "minimum": 0, "maximum": 100},

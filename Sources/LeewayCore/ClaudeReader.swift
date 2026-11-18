@@ -15,7 +15,8 @@ public struct ClaudeReader: Sendable {
     }
 
     /// Runs only the official CLI in a temporary working directory. Process failures expose no output.
-    public func read(_ target: Target) throws -> Snapshot? {
+    /// - Throws: `AccountReadError` for every path that yields no usable reading, so callers can record the cause.
+    public func read(_ target: Target) throws -> Snapshot {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("leeway-probe-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -29,10 +30,12 @@ public struct ClaudeReader: Sendable {
         let done = try runner.run(ProcessRequest(executable: executable, arguments: Self.flags,
             environment: env, workingDirectory: directory, isCancelled: isCancelled))
         try checkExit(done)
-        guard let info = lastEvent(done.stdout) else { return nil }
+        guard let info = lastEvent(done.stdout) else {
+            throw done.exitCode == 0 ? AccountReadError.noRateLimitEvent : AccountReadError.probeFailed
+        }
         let windows = info["unifiedWindows"] as? [String: Any] ?? [:]
         let five = window(windows["five_hour"]), week = window(windows["seven_day"])
-        guard five.pct != nil || week.pct != nil else { return nil }
+        guard five.pct != nil || week.pct != nil else { throw AccountReadError.invalidOutput }
         return Snapshot(account: target.id, at: clock(), plan: plan, fiveHour: five, sevenDay: week)
     }
 

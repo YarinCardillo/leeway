@@ -64,8 +64,10 @@ extension LocalizationTests {
     }
 
     func testSourceErrors_LocalizedWithAndWithoutLastReading() {
-        let english = ["CLI unavailable", "Reading timed out", "Sign in required", "Invalid quota output"]
-        let italian = ["CLI non disponibile", "Lettura scaduta", "Accesso richiesto", "Dati quota non validi"]
+        let english = ["CLI unavailable", "Reading timed out", "Sign in required", "Invalid quota output",
+                       "Reading failed", "No usage reading in the output"]
+        let italian = ["CLI non disponibile", "Lettura scaduta", "Accesso richiesto", "Dati quota non validi",
+                       "Lettura non riuscita", "Nessun dato di quota nell'output"]
         for (index, reason) in AccountReadError.allCases.enumerated() {
             for used in [Double(62), nil] {
                 var value = account(used: used)
