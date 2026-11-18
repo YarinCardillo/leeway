@@ -29,7 +29,7 @@ public enum JSONCodec {
 }
 
 public enum CoreError: Error, Sendable, CustomStringConvertible {
-    case invalidRequest(String), storage, process, accountNotFound, server
+    case invalidRequest(String), storage, process, accountNotFound, server, storeNewerThanBinary
 
     public var description: String {
         switch self {
@@ -38,6 +38,7 @@ public enum CoreError: Error, Sendable, CustomStringConvertible {
         case .process: "process could not run or timed out"
         case .accountNotFound: "account not found or label is ambiguous"
         case .server: "local server failed"
+        case .storeNewerThanBinary: "this leeway is older than the data it would read; use the newer one"
         }
     }
 }

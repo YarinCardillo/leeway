@@ -279,6 +279,21 @@ it observes atomic policy saves and reschedules a cancellable deadline from the
 last refresh when the validated interval changes, without one-second polling.
 `refresh` and the app's Refresh now explicitly opt in to a probe.
 
+`leeway version [--json]` prints the build's contract without opening the store:
+`{"schema_version":1,"version":"0.1.2","status_schema":4,"accounts_schema":1,"store_schema":1}`.
+`store_schema` is the layout of `history.sqlite` this build reads and writes (SQLite
+`user_version`). A build whose `store_schema` is older than the file's refuses `status`,
+`refresh`, `headroom`, `advise` and `serve` before touching it, prints
+`{"schema_version":1,"error":"this leeway is older than the data it would read; use the newer one"}`
+on stdout and exits 3. `version` and `help` still answer, so a caller can compare builds.
+
+### Bundling the helper
+
+An app that ships its own `leeway` runs `version --json` on its copy and on the installed
+one (`/Applications/Leeway.app/Contents/Helpers/leeway`, when present). It uses the
+copy with the higher `store_schema`, then the higher `version`, and only a copy whose
+`status_schema` it understands. A copy that exits 3 is older than the store: use the other one.
+
 `leeway integrations install|uninstall` dispatches the optional Python runtime
 before loading policy or opening the history database. Installation does not
 require quota readings or a valid policy. See [agent integrations](../integrations/README.md).

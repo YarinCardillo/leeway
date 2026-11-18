@@ -150,7 +150,10 @@ public struct StatusDocument: Codable, Equatable, Sendable {
     public let accounts: [AccountStatus]
     public let history: [String: [HistoryPoint]]
 
-    public init(schemaVersion: Int = 4, generatedAt: Date, poller: Poller = .thisProcess,
+    /// The `schema_version` this build writes.
+    public static let currentSchemaVersion = 4
+
+    public init(schemaVersion: Int = StatusDocument.currentSchemaVersion, generatedAt: Date, poller: Poller = .thisProcess,
                 accounts: [AccountStatus] = [], history: [String: [HistoryPoint]] = [:]) {
         self.schemaVersion = schemaVersion
         self.generatedAt = generatedAt

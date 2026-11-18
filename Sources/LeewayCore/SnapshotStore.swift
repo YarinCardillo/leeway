@@ -3,10 +3,17 @@ import CSQLite
 
 /// Serialized, transactional snapshot storage. Errors never include database paths or data.
 public final class SnapshotStore: @unchecked Sendable {
+    /// The store layout this build reads and writes, kept in SQLite's `user_version`.
+    /// 1 is the layout with failure reasons and refresh requests; older databases carry no
+    /// version and are migrated in place. Raise it with every migration, never lower it.
+    public static let schemaVersion = 1
+
     private let db: OpaquePointer
     private let lock = NSRecursiveLock()
 
-    /// Opens a local database and initializes the v1 schema. Throws CoreError.storage on failure.
+    /// Opens a local database and brings it to `schemaVersion`. Throws `CoreError.storeNewerThanBinary`,
+    /// before changing anything, when the file was written by a newer build; otherwise
+    /// `CoreError.storage` on failure.
     public init(path: String) throws {
         try PrivateStorage.database(path)
         var connection: OpaquePointer?
@@ -18,11 +25,14 @@ public final class SnapshotStore: @unchecked Sendable {
         db = connection
         sqlite3_busy_timeout(db, 5000)
         do {
+            let storedVersion = try userVersion()
+            guard storedVersion <= Self.schemaVersion else { throw CoreError.storeNewerThanBinary }
             try execute("CREATE TABLE IF NOT EXISTS snapshots (account TEXT NOT NULL, at REAL NOT NULL, plan TEXT, five_pct REAL, five_reset REAL, week_pct REAL, week_reset REAL, PRIMARY KEY(account, at))")
             try execute("CREATE INDEX IF NOT EXISTS snapshots_window ON snapshots(account, week_reset, at)")
             try execute("CREATE TABLE IF NOT EXISTS failures (account TEXT PRIMARY KEY NOT NULL, at REAL NOT NULL, reason TEXT)")
             try addFailureReasonColumn()
             try execute("CREATE TABLE IF NOT EXISTS refresh_requests (id INTEGER PRIMARY KEY NOT NULL CHECK (id = 1), at REAL NOT NULL)")
+            if storedVersion < Self.schemaVersion { try execute("PRAGMA user_version = \(Self.schemaVersion)") }
             try PrivateStorage.database(path)
         } catch {
             sqlite3_close(db)
@@ -161,6 +171,13 @@ public final class SnapshotStore: @unchecked Sendable {
             sqlite3_bind_double(statement, 2, (after ?? .distantPast).timeIntervalSince1970)
             return try row(statement)
         }
+    }
+
+    private func userVersion() throws -> Int {
+        let statement = try prepare("PRAGMA user_version")
+        defer { sqlite3_finalize(statement) }
+        guard try row(statement) else { throw CoreError.storage }
+        return Int(sqlite3_column_int(statement, 0))
     }
 
     /// Older stores keep failures without a reason; the column is added in place and never dropped.

@@ -114,6 +114,11 @@ reading clears it. Missing or expired windows are null. Claude readings
 older than the polling interval are stale; Codex log readings retain their
 source time and are not stale merely because no new request has been made.
 
+The database carries its layout in SQLite's `user_version` (`SnapshotStore.schemaVersion`,
+1 today). Opening migrates an older file in place and stamps it. A file stamped higher than
+the build knows is refused with `CoreError.storeNewerThanBinary` before any change, so an
+older helper cannot corrupt data a newer one wrote. Raise the number with every migration.
+
 `PollLock` (an `flock` on `poll.lock` beside the history database) keeps one polling
 process at a time. `UsageService` given a lock reads quota only while it holds it;
 otherwise it serves the store and, on `refresh`, records a request in the store's

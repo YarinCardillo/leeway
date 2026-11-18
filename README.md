@@ -36,6 +36,10 @@ leeway status --json
 leeway headroom --account Work
 ```
 
+`leeway version --json` reports the build and its contract versions, so an app
+that bundles the helper can pick the newer compatible copy (see the
+[API](docs/api.md#bundling-the-helper)).
+
 `leeway serve` exposes the same data on `127.0.0.1` only. Optional hooks for
 Claude Code and Codex can warn, switch to a reserve account or block when an
 account is over target. Nothing is steered unless you install them:

@@ -98,3 +98,55 @@ func temporaryDirectory() throws -> URL {
     #expect(try store.takeRefreshRequest())
     #expect(try !store.takeRefreshRequest())
 }
+
+private func storedSchemaVersion(_ path: String) -> Int32 {
+    var connection: OpaquePointer?
+    guard sqlite3_open_v2(path, &connection, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else { return -1 }
+    defer { sqlite3_close(connection) }
+    var statement: OpaquePointer?
+    guard sqlite3_prepare_v2(connection, "PRAGMA user_version", -1, &statement, nil) == SQLITE_OK else { return -1 }
+    defer { sqlite3_finalize(statement) }
+    return sqlite3_step(statement) == SQLITE_ROW ? sqlite3_column_int(statement, 0) : -1
+}
+
+@Test func store_FreshDatabase_RecordsTheCurrentSchemaVersion() throws {
+    let directory = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let path = directory.appendingPathComponent("history.sqlite").path
+    _ = try SnapshotStore(path: path)
+    #expect(SnapshotStore.schemaVersion == 1)
+    #expect(storedSchemaVersion(path) == SnapshotStore.schemaVersion)
+}
+
+@Test func store_UnversionedLegacyDatabase_IsStampedWithoutLosingRows() throws {
+    let directory = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let path = directory.appendingPathComponent("history.sqlite").path
+    var legacy: OpaquePointer?
+    #expect(sqlite3_open(path, &legacy) == SQLITE_OK)
+    #expect(sqlite3_exec(legacy, "CREATE TABLE failures (account TEXT PRIMARY KEY NOT NULL, at REAL NOT NULL); INSERT INTO failures VALUES ('first', 100)", nil, nil, nil) == SQLITE_OK)
+    sqlite3_close(legacy)
+    #expect(storedSchemaVersion(path) == 0)
+    let store = try SnapshotStore(path: path)
+    #expect(try store.hasFailure("first"))
+    #expect(storedSchemaVersion(path) == SnapshotStore.schemaVersion)
+}
+
+@Test func store_NewerSchemaThanTheBinary_IsRefusedAndTheFileIsUntouched() throws {
+    let directory = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let file = directory.appendingPathComponent("history.sqlite")
+    let newer = SnapshotStore.schemaVersion + 1
+    var connection: OpaquePointer?
+    #expect(sqlite3_open(file.path, &connection) == SQLITE_OK)
+    #expect(sqlite3_exec(connection, "CREATE TABLE future (id INTEGER); PRAGMA user_version = \(newer)", nil, nil, nil) == SQLITE_OK)
+    sqlite3_close(connection)
+    let before = try Data(contentsOf: file)
+    do {
+        _ = try SnapshotStore(path: file.path)
+        Issue.record("a store from a newer leeway was opened")
+    } catch CoreError.storeNewerThanBinary {
+    } catch { Issue.record("unexpected error \(error)") }
+    #expect(try Data(contentsOf: file) == before)
+    #expect(storedSchemaVersion(file.path) == newer)
+}

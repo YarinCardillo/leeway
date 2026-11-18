@@ -21,6 +21,7 @@ public struct LeewayCLI: Sendable {
             guard let integrations else { throw CoreError.invalidRequest("Integration commands are unavailable in this build. Install the full Leeway CLI.") }
             return try await integrations.run(Array(arguments.dropFirst()))
         }
+        if command == "version" { return try Self.runVersion(Array(arguments.dropFirst())) }
         let options = try options(Array(arguments.dropFirst()))
         switch command {
         case "status", "refresh":
@@ -35,6 +36,15 @@ public struct LeewayCLI: Sendable {
         }
     }
 
+    /// Answers `version [--json]` from this build alone: it never opens the store, so a
+    /// caller can still ask an older binary what it supports after the store moved on.
+    public static func runVersion(_ arguments: [String]) throws -> String {
+        guard arguments.isEmpty || arguments == ["--json"] else {
+            throw CoreError.invalidRequest("unknown option: \(arguments.first { $0 != "--json" } ?? arguments[0])")
+        }
+        return arguments.isEmpty ? "leeway " + LeewayVersion.current : try JSONCodec.string(VersionInfo.current)
+    }
+
     public static let help = """
     Usage: leeway [--home PATH] [--policy PATH] COMMAND
       status [--json]             Show the latest cached readings and forecasts.
@@ -43,6 +53,7 @@ public struct LeewayCLI: Sendable {
       advise --repo PATH --role ROLE --task-class CLASS [--agent PROVIDER] [--account NAME]
                                  Recommend an account and model using your rules.
       refresh [--json]            Take a new reading, keeping good data on failure.
+      version [--json]            Show the version and the contract versions it speaks.
       serve                      Poll usage and serve the API on 127.0.0.1.
       integrations install|uninstall
                                  Add or remove opt-in agent hooks.

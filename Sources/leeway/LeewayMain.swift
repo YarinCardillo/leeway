@@ -6,10 +6,17 @@ import LeewayCore
 struct LeewayMain {
     /// How often a polling `serve` looks for refreshes that another process left in the store.
     private static let requestCheckSeconds: TimeInterval = 5
+    /// Exit code of a leeway that is older than the store it was asked to read.
+    private static let olderThanStoreExitCode: Int32 = 3
+    /// Printed on stdout, like every other JSON answer, so callers parse one stream.
+    private static let olderThanStoreDocument = "{\"schema_version\":1,\"error\":\"\(CoreError.storeNewerThanBinary.description)\"}"
 
     static func main() async {
         do { try await run() }
-        catch {
+        catch CoreError.storeNewerThanBinary {
+            print(olderThanStoreDocument)
+            exit(olderThanStoreExitCode)
+        } catch {
             let message = (error as? CoreError)?.description ?? (error as? PolicyError)?.description ?? (error as? IntegrationCommandError)?.description ?? "Could not complete the command. Check file access and try again."
             FileHandle.standardError.write(Data(("leeway: " + message + "\n").utf8))
             exit(1)
@@ -22,6 +29,10 @@ struct LeewayMain {
         if let code = try IntegrationCommand.run(arguments: options.arguments) { exit(code) }
         if options.arguments.isEmpty || ["help", "--help", "-h"].contains(options.arguments[0]) {
             print(LeewayCLI.help)
+            return
+        }
+        if options.arguments.first == "version" {
+            print(try LeewayCLI.runVersion(Array(options.arguments.dropFirst())))
             return
         }
         if let status = try IntegrationCommand.run(arguments: options.arguments) { exit(status) }
