@@ -52,12 +52,15 @@ private final class DeadlineWait: @unchecked Sendable {
     try handle.truncate(atOffset: 0)
     try handle.write(contentsOf: Data("poll_minutes = 10\n".utf8))
     try handle.close()
-    #expect(await nextInterval(updates) == 10)
+    #expect(await nextInterval(updates, settlingOn: 10) == 10)
 }
 
-private func nextInterval(_ changes: AsyncStream<Int>) async -> Int? {
+/// The next interval, or the first one equal to `settlingOn` when given. An in-place rewrite truncates
+/// the file before writing it, and a watcher that wakes in between legitimately reads the empty file's
+/// default interval first.
+private func nextInterval(_ changes: AsyncStream<Int>, settlingOn target: Int? = nil) async -> Int? {
     await withTaskGroup(of: Int?.self) { group in
-        group.addTask { for await value in changes { return value }; return nil }
+        group.addTask { for await value in changes where target == nil || value == target { return value }; return nil }
         group.addTask { try? await Task.sleep(for: .seconds(2)); return nil }
         let value = await group.next() ?? nil
         group.cancelAll()
