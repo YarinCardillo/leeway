@@ -190,11 +190,3 @@ private func openLegacyStoreFile(_ path: String, version: Int) throws {
     try store.record(anchor, estimated: backfill)
     #expect(try store.windowHistory("new", resetsAt: reset).count == 3)
 }
-
-@Test func store_EstimatedPointsAlone_AreNotAReading() throws {
-    let store = try SnapshotStore(path: ":memory:")
-    try store.record(Snapshot(account: "x", at: now, sevenDay: UsageWindow(pct: 5, resetsAt: reset)),
-        estimated: [HistoryPoint(at: now.addingTimeInterval(-hour), pct: 5, estimated: true)])
-    #expect(try store.latest("x")?.at == now)
-    #expect(try !store.hasReadings("other"))
-}

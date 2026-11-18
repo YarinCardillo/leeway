@@ -8,13 +8,21 @@ public final class SnapshotStore: @unchecked Sendable {
     /// backfilled history. Older databases are migrated in place. Raise it with every migration, never lower it.
     public static let schemaVersion = 2
 
+    private static let incompleteFailureDelay: TimeInterval = 0.001
+
     private let db: OpaquePointer
     private let lock = NSRecursiveLock()
 
     /// Opens a local database and brings it to `schemaVersion`. Throws `CoreError.storeNewerThanBinary`,
     /// before changing anything, when the file was written by a newer build; otherwise
     /// `CoreError.storage` on failure.
-    public init(path: String) throws {
+    public convenience init(path: String) throws {
+        try self.init(path: path, schemaVersion: Self.schemaVersion, whileMigrating: {})
+    }
+
+    /// Opens a store as a build whose layout is `schemaVersion`. `whileMigrating` runs inside the migration
+    /// transaction, after the stored version is read, so a test can start a second build at that moment.
+    init(path: String, schemaVersion: Int, whileMigrating: () -> Void) throws {
         try PrivateStorage.database(path)
         var connection: OpaquePointer?
         guard sqlite3_open_v2(path, &connection, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, nil) == SQLITE_OK,
@@ -25,15 +33,7 @@ public final class SnapshotStore: @unchecked Sendable {
         db = connection
         sqlite3_busy_timeout(db, 5000)
         do {
-            let storedVersion = try userVersion()
-            guard storedVersion <= Self.schemaVersion else { throw CoreError.storeNewerThanBinary }
-            try execute("CREATE TABLE IF NOT EXISTS snapshots (account TEXT NOT NULL, at REAL NOT NULL, plan TEXT, five_pct REAL, five_reset REAL, week_pct REAL, week_reset REAL, PRIMARY KEY(account, at))")
-            try execute("CREATE INDEX IF NOT EXISTS snapshots_window ON snapshots(account, week_reset, at)")
-            try execute("CREATE TABLE IF NOT EXISTS failures (account TEXT PRIMARY KEY NOT NULL, at REAL NOT NULL, reason TEXT)")
-            try addColumn("reason", definition: "TEXT", to: "failures")
-            try addColumn("estimated", definition: "INTEGER NOT NULL DEFAULT 0", to: "snapshots")
-            try execute("CREATE TABLE IF NOT EXISTS refresh_requests (id INTEGER PRIMARY KEY NOT NULL CHECK (id = 1), at REAL NOT NULL)")
-            if storedVersion < Self.schemaVersion { try execute("PRAGMA user_version = \(Self.schemaVersion)") }
+            try migrate(to: schemaVersion, whileMigrating: whileMigrating)
             try PrivateStorage.database(path)
         } catch {
             sqlite3_close(db)
@@ -56,7 +56,11 @@ public final class SnapshotStore: @unchecked Sendable {
                     && (retainedFive?.0.resetsAt ?? .distantPast) > snapshot.at
                 if snapshot.sevenDay.pct != nil, !missingActiveFive {
                     try clearFailure(snapshot.account)
-                } else { try markFailed(snapshot.account, at: snapshot.at) }
+                } else {
+                    // Stamped just after the reading: a failure only counts against readings it follows.
+                    try markFailed(snapshot.account, at: snapshot.at.addingTimeInterval(Self.incompleteFailureDelay),
+                        reason: .invalidOutput)
+                }
                 try execute("COMMIT")
             } catch {
                 sqlite3_exec(db, "ROLLBACK", nil, nil, nil)
@@ -177,6 +181,28 @@ public final class SnapshotStore: @unchecked Sendable {
         }
     }
 
+    /// Reads the stored version and brings the layout to `schemaVersion` in one write transaction, so a
+    /// build that started earlier can never stamp an older version over a newer build's migration.
+    private func migrate(to schemaVersion: Int, whileMigrating: () -> Void) throws {
+        try execute("BEGIN IMMEDIATE")
+        do {
+            let storedVersion = try userVersion()
+            guard storedVersion <= schemaVersion else { throw CoreError.storeNewerThanBinary }
+            whileMigrating()
+            try execute("CREATE TABLE IF NOT EXISTS snapshots (account TEXT NOT NULL, at REAL NOT NULL, plan TEXT, five_pct REAL, five_reset REAL, week_pct REAL, week_reset REAL, PRIMARY KEY(account, at))")
+            try execute("CREATE INDEX IF NOT EXISTS snapshots_window ON snapshots(account, week_reset, at)")
+            try execute("CREATE TABLE IF NOT EXISTS failures (account TEXT PRIMARY KEY NOT NULL, at REAL NOT NULL, reason TEXT)")
+            try addColumn("reason", definition: "TEXT", to: "failures")
+            try addColumn("estimated", definition: "INTEGER NOT NULL DEFAULT 0", to: "snapshots")
+            try execute("CREATE TABLE IF NOT EXISTS refresh_requests (id INTEGER PRIMARY KEY NOT NULL CHECK (id = 1), at REAL NOT NULL)")
+            if storedVersion < schemaVersion { try execute("PRAGMA user_version = \(schemaVersion)") }
+            try execute("COMMIT")
+        } catch {
+            sqlite3_exec(db, "ROLLBACK", nil, nil, nil)
+            throw error
+        }
+    }
+
     private func userVersion() throws -> Int {
         let statement = try prepare("PRAGMA user_version")
         defer { sqlite3_finalize(statement) }
@@ -200,7 +226,13 @@ public final class SnapshotStore: @unchecked Sendable {
     }
 
     private func insertReading(_ snapshot: Snapshot) throws {
-        let statement = try prepare("INSERT OR IGNORE INTO snapshots (account, at, plan, five_pct, five_reset, week_pct, week_reset) VALUES (?, ?, ?, ?, ?, ?, ?)")
+        // A real reading replaces an estimate at the same timestamp; it never replaces another real reading.
+        let statement = try prepare("""
+            INSERT INTO snapshots (account, at, plan, five_pct, five_reset, week_pct, week_reset) VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(account, at) DO UPDATE SET plan = excluded.plan, five_pct = excluded.five_pct,
+                five_reset = excluded.five_reset, week_pct = excluded.week_pct, week_reset = excluded.week_reset, estimated = 0
+            WHERE snapshots.estimated = 1
+            """)
         defer { sqlite3_finalize(statement) }
         bind(snapshot.account, to: statement, at: 1)
         sqlite3_bind_double(statement, 2, snapshot.at.timeIntervalSince1970)

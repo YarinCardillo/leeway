@@ -379,3 +379,35 @@ private struct SharedHome {
     #expect(served.accounts.first?.error == .notSignedIn)
     #expect(served.accounts.first?.stale == true)
 }
+
+private func fiveHourOnlyEvent() -> String {
+    rateEvent().replacingOccurrences(of: "\"seven_day\":", with: "\"ignored\":")
+}
+
+@Test func firstReadingWithoutTheWeeklyWindow_SaysWhyOnTheReaderAndOnAProcessThatDidNotPoll() async throws {
+    let shared = try SharedHome()
+    defer { try? FileManager.default.removeItem(at: shared.home) }
+    let holder = try shared.service(runner: FakeRunner(output: ProcessOutput(exitCode: 0, stdout: fiveHourOnlyEvent())),
+        lock: PollLock(path: shared.lockPath))
+    let other = try shared.service(runner: FakeRunner(), lock: PollLock(path: shared.lockPath))
+    let polled = try #require(try await holder.status(refresh: true).accounts.first)
+    #expect(polled.sevenDay.pct == nil)
+    #expect(polled.stale)
+    #expect(polled.error == .invalidOutput)
+    let served = try #require(try await other.status().accounts.first)
+    #expect(served.stale)
+    #expect(served.error == .invalidOutput)
+}
+
+@Test func partialReadingWithRetainedWindows_KeepsTheWindowsAndSaysWhy() async throws {
+    let shared = try SharedHome()
+    defer { try? FileManager.default.removeItem(at: shared.home) }
+    let store = try SnapshotStore(path: shared.databasePath)
+    try store.record(Snapshot(account: "claude-default", at: now.addingTimeInterval(-hour),
+        sevenDay: UsageWindow(pct: 40, resetsAt: reset)))
+    let holder = try shared.service(runner: FakeRunner(output: ProcessOutput(exitCode: 0, stdout: fiveHourOnlyEvent())),
+        lock: PollLock(path: shared.lockPath))
+    let account = try #require(try await holder.status(refresh: true).accounts.first)
+    #expect(account.sevenDay.pct == 40)
+    #expect(account.error == .invalidOutput)
+}
