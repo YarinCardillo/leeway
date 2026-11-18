@@ -181,16 +181,23 @@ public struct AdviceRequest: Codable, Equatable, Sendable {
     public let taskClass: TaskClass
     public let agent: Provider?
     public let account: String?
+    /// Landing target in percent of the week (1 to 100) that replaces the policy target for this answer.
+    public let target: Double?
+    /// Accounts to try, in order, instead of the preferred account's configured reserve.
+    public let candidates: [String]?
 
-    public init(repo: String, role: Role, taskClass: TaskClass, agent: Provider? = nil, account: String? = nil) {
+    public init(repo: String, role: Role, taskClass: TaskClass, agent: Provider? = nil, account: String? = nil,
+                target: Double? = nil, candidates: [String]? = nil) {
         self.repo = repo
         self.role = role
         self.taskClass = taskClass
         self.agent = agent
         self.account = account
+        self.target = target
+        self.candidates = candidates
     }
 
-    enum CodingKeys: String, CodingKey { case repo, role, taskClass, agent, account }
+    enum CodingKeys: String, CodingKey { case repo, role, taskClass, agent, account, target, candidates }
 
     public func encode(to encoder: any Encoder) throws {
         var fields = encoder.container(keyedBy: CodingKeys.self)
@@ -199,6 +206,8 @@ public struct AdviceRequest: Codable, Equatable, Sendable {
         try fields.encode(taskClass, forKey: .taskClass)
         try fields.encode(agent, forKey: .agent)
         try fields.encode(account, forKey: .account)
+        try fields.encode(target, forKey: .target)
+        try fields.encode(candidates, forKey: .candidates)
     }
 }
 
@@ -213,8 +222,13 @@ public struct Advice: Codable, Equatable, Sendable {
     public let reason: String
     public let retryAt: Date?
     public let headroomPct: Double?
+    /// The weekly landing target, in percent, the answer was judged against.
+    public let targetUsed: Double?
 
-    public init(schemaVersion: Int = 1, verdict: Verdict, agent: String = "", account: String = "", model: String = "", effort: String = "", configDir: String = "", reason: String, retryAt: Date? = nil, headroomPct: Double? = nil) {
+    /// The schema of advice answers.
+    public static let currentSchemaVersion = 2
+
+    public init(schemaVersion: Int = Advice.currentSchemaVersion, verdict: Verdict, agent: String = "", account: String = "", model: String = "", effort: String = "", configDir: String = "", reason: String, retryAt: Date? = nil, headroomPct: Double? = nil, targetUsed: Double? = nil) {
         self.schemaVersion = schemaVersion
         self.verdict = verdict
         self.agent = agent
@@ -225,9 +239,10 @@ public struct Advice: Codable, Equatable, Sendable {
         self.reason = reason
         self.retryAt = retryAt
         self.headroomPct = headroomPct
+        self.targetUsed = targetUsed
     }
 
-    enum CodingKeys: String, CodingKey { case schemaVersion, verdict, agent, account, model, effort, configDir, reason, retryAt, headroomPct }
+    enum CodingKeys: String, CodingKey { case schemaVersion, verdict, agent, account, model, effort, configDir, reason, retryAt, headroomPct, targetUsed }
 
     public func encode(to encoder: any Encoder) throws {
         var fields = encoder.container(keyedBy: CodingKeys.self)
@@ -241,5 +256,6 @@ public struct Advice: Codable, Equatable, Sendable {
         try fields.encode(reason, forKey: .reason)
         try fields.encode(retryAt, forKey: .retryAt)
         try fields.encode(headroomPct, forKey: .headroomPct)
+        try fields.encode(targetUsed, forKey: .targetUsed)
     }
 }

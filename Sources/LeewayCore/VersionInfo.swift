@@ -13,9 +13,11 @@ public struct VersionInfo: Codable, Equatable, Sendable {
     public let version: String
     public let statusSchema: Int
     public let accountsSchema: Int
+    public let adviceSchema: Int
     public let storeSchema: Int
 
     /// The contract of this build.
     public static let current = VersionInfo(schemaVersion: 1, version: LeewayVersion.current,
-        statusSchema: StatusDocument.currentSchemaVersion, accountsSchema: 1, storeSchema: SnapshotStore.schemaVersion)
+        statusSchema: StatusDocument.currentSchemaVersion, accountsSchema: 1,
+        adviceSchema: Advice.currentSchemaVersion, storeSchema: SnapshotStore.schemaVersion)
 }

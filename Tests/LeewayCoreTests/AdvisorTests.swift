@@ -13,8 +13,10 @@ func account(_ id: String, provider: Provider = .claude, week: Double? = 20,
 }
 
 func ask(_ accounts: [AccountStatus], role: Role = .builder, agent: Provider? = .claude,
-         selected: String? = nil, policy: Policy = Policy()) -> Advice {
-    Advisor.advise(AdviceRequest(repo: "/example/app", role: role, taskClass: .integration, agent: agent, account: selected),
+         selected: String? = nil, policy: Policy = Policy(), target: Double? = nil,
+         candidates: [String]? = nil) -> Advice {
+    Advisor.advise(AdviceRequest(repo: "/example/app", role: role, taskClass: .integration, agent: agent,
+            account: selected, target: target, candidates: candidates),
         document: StatusDocument(generatedAt: now, accounts: accounts), policy: policy)
 }
 

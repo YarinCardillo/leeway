@@ -72,12 +72,13 @@ private struct MissingCLIProvider: UsageProvider {
 @Test func cliVersionJson_NamesTheContractsAndTheStoreSchema() throws {
     let text = try LeewayCLI.runVersion(["--json"])
     let raw = try #require(jsonObject(Data(text.utf8)))
-    #expect(Set(raw.keys) == ["schema_version", "version", "status_schema", "accounts_schema", "store_schema"])
+    #expect(Set(raw.keys) == ["schema_version", "version", "status_schema", "accounts_schema", "advice_schema", "store_schema"])
     #expect(raw["schema_version"] as? Int == 1)
     #expect(raw["version"] as? String == LeewayVersion.current)
     #expect(raw["status_schema"] as? Int == StatusDocument.currentSchemaVersion)
     #expect(raw["status_schema"] as? Int == 4)
     #expect(raw["accounts_schema"] as? Int == 1)
+    #expect(raw["advice_schema"] as? Int == 2)
     #expect(raw["store_schema"] as? Int == SnapshotStore.schemaVersion)
     #expect(try LeewayCLI.runVersion([]) == "leeway " + LeewayVersion.current)
 }

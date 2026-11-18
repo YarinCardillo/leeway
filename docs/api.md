@@ -17,7 +17,7 @@ credentials, session content, or filesystem errors in error messages.
 
 Clients ignore additional response properties. Removing fields or changing
 meaning requires a schema version change. Status and refresh responses use
-`schema_version: 4`; advice and errors retain version 1; headroom uses version 2. The URL remains
+`schema_version: 4`; advice uses version 2; errors retain version 1; headroom uses version 2. The URL remains
 `/v1` because this contract has not been published. Nullable response fields are present even when null.
 
 ## GET /v1/status
@@ -184,7 +184,13 @@ instructions to use the target fields. Reserve-account routing remains available
 
 Optional `account`
 restricts the preferred account by id or unique label; its configured
-reserve account is the next candidate. Optional `agent` restricts the
+reserve account is the next candidate. Optional `candidates` is an ordered list
+of account ids or labels to try after the preferred account, in that order,
+instead of its configured reserve; a repeated or empty name is refused with 400.
+Optional `target` (1 to 100, percent of the week) replaces the policy target high
+of every candidate for this one answer, so a caller can ask where an account lands
+at its reset against its own line; 0, 101 and non-numbers are refused with 400.
+Without `target` the policy applies as before. Optional `agent` restricts the
 provider. Paths are matched against policy projects in order, first match
 wins. Without project rules every enabled account is eligible. Builder and
 reviewer prefer Codex then Claude; other roles use Claude unless `agent` is
@@ -195,14 +201,17 @@ Request JSON Schema:
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "AdviceRequestV1", "type": "object",
+  "title": "AdviceRequestV2", "type": "object",
   "required": ["repo", "role", "task_class"],
   "properties": {
     "repo": {"type": "string", "minLength": 1},
     "role": {"enum": ["builder", "reviewer", "explorer", "planner", "evaluator"]},
     "task_class": {"enum": ["mechanical", "integration", "design"]},
     "agent": {"enum": ["claude", "codex", null]},
-    "account": {"type": ["string", "null"], "minLength": 1}
+    "account": {"type": ["string", "null"], "minLength": 1},
+    "target": {"type": ["number", "null"], "minimum": 1, "maximum": 100},
+    "candidates": {"type": ["array", "null"], "items": {"type": "string", "minLength": 1},
+                   "minItems": 1, "uniqueItems": true}
   },
   "additionalProperties": false
 }
@@ -213,10 +222,10 @@ Response JSON Schema:
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "AdviceV1", "type": "object",
-  "required": ["schema_version", "verdict", "agent", "account", "model", "effort", "config_dir", "reason", "retry_at", "headroom_pct"],
+  "title": "AdviceV2", "type": "object",
+  "required": ["schema_version", "verdict", "agent", "account", "model", "effort", "config_dir", "reason", "retry_at", "headroom_pct", "target_used"],
   "properties": {
-    "schema_version": {"const": 1},
+    "schema_version": {"const": 2},
     "verdict": {"enum": ["go", "switch", "wait", "deny"]},
     "agent": {"enum": ["claude", "codex", ""]},
     "account": {"type": "string"},
@@ -225,10 +234,17 @@ Response JSON Schema:
     "config_dir": {"type": "string"},
     "reason": {"type": "string"},
     "retry_at": {"type": ["string", "null"], "format": "date-time"},
-    "headroom_pct": {"type": ["number", "null"], "minimum": 0}
+    "headroom_pct": {"type": ["number", "null"], "minimum": 0},
+    "target_used": {"type": ["number", "null"], "minimum": 1, "maximum": 100}
   }
 }
 ```
+
+Schema 2 over schema 1 only adds `target_used`: the weekly target high, in percent, the
+answered account was judged against (the caller's `target`, or the account's policy
+target high), null when no account is eligible. Clients that accept schema 1 must also
+accept 2 and ignore the new field. With a caller's `target`, `wait` carries the weekly
+reset as `retry_at`, the earliest moment the forecast restarts under the line.
 
 A five-hour reading at 95 or more blocks the candidate independently of the
 weekly verdict. Weekly steering consumes exactly the account `status`:
@@ -269,7 +285,7 @@ ids to `[HistoryPoint]` encoded as `[timestamp, percentage]` pairs.
 
 CLI commands: `status [--json]`, `headroom --account <id-or-label> [--json]`,
 `advise --repo <path> --role <role> --task-class <class> [--agent <provider>]
-[--account <id-or-label>]`, `refresh [--json]`, and `serve`.
+[--account <id-or-label>] [--target <percent>] [--candidates <id,id>]`, `refresh [--json]`, and `serve`.
 Advice always prints JSON. Headroom JSON is
 `{"schema_version":2,"account":"id","target_low":75,"target_high":100,"used_pct":20,"headroom_pct":80}`,
 with null usage/headroom when unknown; headroom never falls below zero.
@@ -280,7 +296,7 @@ last refresh when the validated interval changes, without one-second polling.
 `refresh` and the app's Refresh now explicitly opt in to a probe.
 
 `leeway version [--json]` prints the build's contract without opening the store:
-`{"schema_version":1,"version":"0.1.2","status_schema":4,"accounts_schema":1,"store_schema":1}`.
+`{"schema_version":1,"version":"0.1.2","status_schema":4,"accounts_schema":1,"advice_schema":2,"store_schema":1}`.
 `store_schema` is the layout of `history.sqlite` this build reads and writes (SQLite
 `user_version`). A build whose `store_schema` is older than the file's refuses `status`,
 `refresh`, `headroom`, `advise` and `serve` before touching it, prints
@@ -292,7 +308,7 @@ on stdout and exits 3. `version` and `help` still answer, so a caller can compar
 An app that ships its own `leeway` runs `version --json` on its copy and on the installed
 one (`/Applications/Leeway.app/Contents/Helpers/leeway`, when present). It uses the
 copy with the higher `store_schema`, then the higher `version`, and only a copy whose
-`status_schema` it understands. A copy that exits 3 is older than the store: use the other one.
+`status_schema` and `advice_schema` it understands. A copy that exits 3 is older than the store: use the other one.
 
 `leeway integrations install|uninstall` dispatches the optional Python runtime
 before loading policy or opening the history database. Installation does not

@@ -10,6 +10,7 @@ public enum Advisor {
     /// Applies user policy to cached status, trying eligible accounts in policy order.
     public static func advise(_ request: AdviceRequest, document: StatusDocument, policy: Policy) -> Advice {
         let candidates = candidates(request, accounts: document.accounts, policy: policy)
+            .map { account in request.target.map { account.retargeted(to: $0) } ?? account }
         guard let first = candidates.first else {
             return Advice(verdict: .deny, agent: request.agent?.rawValue ?? "", reason: "no account is allowed for this project")
         }
@@ -42,11 +43,26 @@ public enum Advisor {
             let names = provider == .codex ? allowed.codex : allowed.claude
             return names.map { names in names.flatMap { name in mine.filter { $0.id == name } } } ?? mine
         }
-        guard let selected = request.account else { return ordered }
+        guard let preferred = preferredAccount(request, ordered: ordered) else { return [] }
+        if let names = request.candidates {
+            let listed = names.flatMap { name in ordered.filter { $0.id == name || $0.label == name } }
+            return distinct(preferred + listed)
+        }
+        guard let first = preferred.first else { return ordered }
+        let reserve = policy.accounts.first { $0.id == first.id }?.reserveAccount
+        return [first] + ordered.filter { $0.id == reserve && $0.id != first.id }
+    }
+
+    /// The account named by `request.account`: empty when none was named, nil when it is unknown or ambiguous.
+    private static func preferredAccount(_ request: AdviceRequest, ordered: [AccountStatus]) -> [AccountStatus]? {
+        guard let selected = request.account else { return [] }
         let matches = ordered.filter { $0.id == selected || $0.label == selected }
-        guard matches.count == 1, let preferred = matches.first else { return [] }
-        let reserve = policy.accounts.first { $0.id == preferred.id }?.reserveAccount
-        return [preferred] + ordered.filter { $0.id == reserve && $0.id != preferred.id }
+        return matches.count == 1 ? matches : nil
+    }
+
+    private static func distinct(_ accounts: [AccountStatus]) -> [AccountStatus] {
+        var seen = Set<String>()
+        return accounts.filter { seen.insert($0.id).inserted }
     }
 
     private static func block(_ account: AccountStatus) -> Block? {
@@ -87,6 +103,17 @@ public enum Advisor {
         let choice = ModelRouter.choose(account.provider, role: request.role, task: request.taskClass, policy: policy)
         return Advice(verdict: verdict, agent: account.provider.rawValue, account: account.id, model: choice.model,
             effort: choice.effort, configDir: account.configDir, reason: reason, retryAt: retry,
-            headroomPct: account.status == .under ? account.forecast.rangeHigh.map { account.targetLow - $0 } : nil)
+            headroomPct: account.status == .under ? account.forecast.rangeHigh.map { account.targetLow - $0 } : nil,
+            targetUsed: account.targetHigh)
+    }
+}
+
+private extension AccountStatus {
+    /// The same reading judged against a caller's landing target instead of the policy target high.
+    /// The low edge never rises above the new high, so the interval stays valid.
+    func retargeted(to target: Double) -> AccountStatus {
+        AccountStatus(id: id, label: label, provider: provider, configDir: configDir, registered: registered,
+            aliases: aliases, plan: plan, fiveHour: fiveHour, sevenDay: sevenDay, forecast: forecast, source: source,
+            stale: stale, error: error, asOf: asOf, targetLow: min(targetLow, target), targetHigh: target)
     }
 }

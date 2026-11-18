@@ -64,8 +64,8 @@ def _version(value: dict, versions: tuple[int, ...] = (1,)) -> None:
 
 
 def validate_advice(value: dict) -> None:
-    """Validate v1 advice, including empty routing fields on deny and wait responses."""
-    _version(value)
+    """Validate advice (schema 1 or 2), including empty routing fields on deny and wait responses."""
+    _version(value, (1, 2))
     if value.get("verdict") not in {"go", "switch", "wait", "deny"}:
         raise ValueError("invalid quota verdict")
     for key in ("agent", "account", "model", "effort", "config_dir", "reason"):

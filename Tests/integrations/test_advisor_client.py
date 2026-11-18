@@ -79,7 +79,13 @@ def test_v1_accepts_empty_effort_and_codex_model():
                             "retry_at": None})
 
 
-@pytest.mark.parametrize("version", [None, 2, True, "1"])
+def test_advice_schema_2_is_accepted_with_its_target_used():
+    client.validate_advice({"schema_version": 2, "account": "current", "verdict": "go", "agent": "claude",
+                            "model": "sonnet", "effort": "", "config_dir": "/profile", "reason": "available",
+                            "retry_at": None, "target_used": 75})
+
+
+@pytest.mark.parametrize("version", [None, 3, True, "1"])
 def test_v1_rejects_unknown_or_missing_schema_version(version):
     with pytest.raises(ValueError):
         client.validate_advice({"schema_version": version, "account": "current", "verdict": "go",

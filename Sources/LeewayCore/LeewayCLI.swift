@@ -51,7 +51,9 @@ public struct LeewayCLI: Sendable {
       headroom --account NAME [--json]
                                  Show unused quota below an account's target.
       advise --repo PATH --role ROLE --task-class CLASS [--agent PROVIDER] [--account NAME]
-                                 Recommend an account and model using your rules.
+             [--target PERCENT] [--candidates NAME,NAME]
+                                 Recommend an account and model using your rules,
+                                 or against a landing target of 1 to 100 percent.
       refresh [--json]            Take a new reading, keeping good data on failure.
       version [--json]            Show the version and the contract versions it speaks.
       serve                      Poll usage and serve the API on 127.0.0.1.
@@ -90,7 +92,7 @@ public struct LeewayCLI: Sendable {
     }
 
     private func advice(_ options: [String: String]) throws -> AdviceRequest {
-        try check(options, allowed: ["--repo", "--role", "--task-class", "--agent", "--account", "--json"])
+        try check(options, allowed: ["--repo", "--role", "--task-class", "--agent", "--account", "--target", "--candidates", "--json"])
         guard let repo = options["--repo"], !repo.isEmpty,
               let role = options["--role"].flatMap(Role.init(rawValue:)),
               let task = options["--task-class"].flatMap(TaskClass.init(rawValue:)) else {
@@ -98,7 +100,15 @@ public struct LeewayCLI: Sendable {
         }
         let agent = options["--agent"].flatMap(Provider.init(rawValue:))
         if options["--agent"] != nil, agent == nil { throw CoreError.invalidRequest("invalid agent") }
-        return AdviceRequest(repo: repo, role: role, taskClass: task, agent: agent, account: options["--account"])
+        let target = try options["--target"].map { text in
+            guard let value = Double(text) else { throw CoreError.invalidRequest("target must be a number between 1 and 100") }
+            return value
+        }
+        let candidates = options["--candidates"].map { $0.split(separator: ",", omittingEmptySubsequences: false).map(String.init) }
+        try AdviceRequest.checkTarget(target)
+        try AdviceRequest.checkCandidates(candidates)
+        return AdviceRequest(repo: repo, role: role, taskClass: task, agent: agent, account: options["--account"],
+            target: target, candidates: candidates)
     }
 
     private func headroom(_ options: [String: String]) async throws -> String {
