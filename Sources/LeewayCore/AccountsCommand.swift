@@ -69,7 +69,7 @@ public struct AccountsCommand: Sendable {
 
     private func reconciled(_ book: AccountBook) throws -> AccountBook {
         var result = book
-        result.reconcile(with: try TargetDiscovery.discoverAccounts(home: home, accounts: policy.accounts,
+        result.reconcile(with: try TargetDiscovery.catalogue(home: home, accounts: policy.accounts,
             environment: environment, book: result))
         result.adoptLabels(of: policy.accounts, home: home)
         return result

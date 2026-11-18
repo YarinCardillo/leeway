@@ -75,7 +75,7 @@ public actor UsageService: UsageProvider {
     /// listed and can be removed. Only the polling process does this.
     private func recordAccounts() throws {
         try AccountBookFile(url: AccountBook.fileURL(home: home)).update { book in
-            book.reconcile(with: try TargetDiscovery.discoverAccounts(home: home, accounts: policy.accounts,
+            book.reconcile(with: try TargetDiscovery.catalogue(home: home, accounts: policy.accounts,
                 environment: environment, book: book))
             book.adoptLabels(of: policy.accounts, home: home)
         }

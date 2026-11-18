@@ -20,7 +20,7 @@ public enum TargetDiscovery {
                 configDir: account.configDir, registered: true), origin: .added))
         }
         for entry in book.accounts where entry.origin == .added {
-            if let account = saved(entry, home: home, book: book, seen: &seen) { found.append(account) }
+            if let account = saved(entry, home: home, book: book, found: found, seen: &seen) { found.append(account) }
         }
         for (provider, directory, defaultID) in try automaticFolders(home: home, environment: environment)
         where isDirectory(directory) && !book.excludes(provider, directory) {
@@ -31,18 +31,33 @@ public enum TargetDiscovery {
         }
         // Accounts found in another process environment stay in the book and stay visible in this one.
         for entry in book.accounts where entry.origin != .added {
-            if let account = saved(entry, home: home, book: book, seen: &seen) { found.append(account) }
+            if let account = saved(entry, home: home, book: book, found: found, seen: &seen) { found.append(account) }
         }
         return found
     }
 
-    private static func saved(_ entry: AccountEntry, home: URL, book: AccountBook, seen: inout Set<String>) -> DiscoveredAccount? {
+    private static func saved(_ entry: AccountEntry, home: URL, book: AccountBook, found: [DiscoveredAccount], seen: inout Set<String>) -> DiscoveredAccount? {
         let directory = URL(fileURLWithPath: entry.configDir)
         guard !entry.hidden, isDirectory(directory), !book.isRemoved(directory),
               seen.insert(key(entry.provider, directory)).inserted else { return nil }
         let label = entry.label ?? AccountLabel.defaultName(provider: entry.provider, directory: directory, home: home)
-        return DiscoveredAccount(target: Target(id: entry.id, provider: entry.provider, label: label, configDir: directory),
-            origin: entry.origin)
+        return DiscoveredAccount(target: Target(id: unique(entry.id, found: found), provider: entry.provider, label: label,
+            configDir: directory), origin: entry.origin)
+    }
+
+    /// Every account the policy lists, polled or not, so a disabled or missing one can still be listed and removed.
+    /// Used with `discoverAccounts`; polling targets come from discovery alone.
+    public static func catalogue(home: URL, accounts: [AccountConfiguration], environment: [String: String],
+                                 book: AccountBook) throws -> [DiscoveredAccount] {
+        var result = try discoverAccounts(home: home, accounts: accounts, environment: environment, book: book)
+        for account in accounts where !book.isRemoved(account.configDir)
+            && !result.contains(where: { $0.target.configDir.resolvingSymlinksInPath() == account.configDir.resolvingSymlinksInPath()
+                && $0.target.provider == account.provider }) {
+            let label = book.label(account.provider, account.configDir) ?? account.label
+            result.append(DiscoveredAccount(target: Target(id: unique(account.id, found: result), provider: account.provider,
+                label: label, configDir: account.configDir, registered: true), origin: .added))
+        }
+        return result
     }
 
     /// Includes historical IDs only for directories proven to resolve to this target.

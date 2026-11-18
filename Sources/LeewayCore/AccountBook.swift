@@ -57,12 +57,17 @@ public struct AccountBook: Codable, Equatable, Sendable {
     public static func load(_ url: URL) throws -> AccountBook {
         guard FileManager.default.fileExists(atPath: url.path) else { return AccountBook() }
         guard let data = try? Data(contentsOf: url) else { throw CoreError.accountBookUnreadable }
-        guard let book = try? JSONCodec.decoder().decode(AccountBook.self, from: data) else {
+        // A newer layout may change any field, so only the version is read before it is compared.
+        guard let envelope = try? JSONCodec.decoder().decode(VersionEnvelope.self, from: data) else {
             throw CoreError.accountBookUnreadable
         }
-        guard book.schemaVersion <= currentSchemaVersion else { throw CoreError.storeNewerThanBinary }
+        guard envelope.schemaVersion <= currentSchemaVersion else { throw CoreError.storeNewerThanBinary }
+        guard let book = try? JSONCodec.decoder().decode(AccountBook.self, from: data),
+              Set(book.accounts.map(\.id)).count == book.accounts.count else { throw CoreError.accountBookUnreadable }
         return book
     }
+
+    private struct VersionEnvelope: Decodable { let schemaVersion: Int }
 
     /// Writes the book atomically with private permissions.
     public func save(to url: URL) throws {
@@ -88,14 +93,17 @@ public struct AccountBook: Codable, Equatable, Sendable {
     // MARK: Changes
 
     /// Adds entries for accounts the book has not seen and keeps each entry's id equal to the id clients see.
+    /// An id belongs to one folder: an older entry of another folder that held it gets a fresh id.
     public mutating func reconcile(with found: [DiscoveredAccount]) {
         for item in found {
             let target = item.target
-            if let index = accounts.firstIndex(where: { $0.provider == target.provider && Self.same($0.configDir, target.configDir.path) }) {
+            let folder = target.configDir.path
+            vacate(id: target.id, foldersOtherThan: folder)
+            if let index = accounts.firstIndex(where: { $0.provider == target.provider && Self.same($0.configDir, folder) }) {
                 accounts[index].id = target.id
             } else {
                 accounts.append(AccountEntry(id: target.id, provider: target.provider, label: nil,
-                    configDir: target.configDir.path, origin: item.origin, hidden: false, order: nextOrder))
+                    configDir: folder, origin: item.origin, hidden: false, order: nextOrder))
             }
         }
     }
@@ -201,6 +209,13 @@ public struct AccountBook: Codable, Equatable, Sendable {
         let url = URL(fileURLWithPath: folder)
         accounts.append(AccountEntry(id: uniqueID(provider.rawValue + "-" + TargetDiscovery.stableID(url)), provider: provider,
             label: nil, configDir: folder, origin: .added, hidden: false, order: nextOrder))
+    }
+
+    private mutating func vacate(id: String, foldersOtherThan folder: String) {
+        for index in accounts.indices where accounts[index].id == id && !Self.same(accounts[index].configDir, folder) {
+            let entry = accounts[index]
+            accounts[index].id = uniqueID(entry.provider.rawValue + "-" + TargetDiscovery.stableID(URL(fileURLWithPath: entry.configDir)))
+        }
     }
 
     private func uniqueID(_ base: String) -> String {

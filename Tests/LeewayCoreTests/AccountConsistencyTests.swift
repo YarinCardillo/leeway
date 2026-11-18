@@ -88,7 +88,61 @@ private func labels(_ text: String) throws -> [String: String] {
     defer { try? FileManager.default.removeItem(at: home) }
     let account = AccountConfiguration(id: "plain", provider: .claude, label: AccountLabel.defaultName(provider: .claude,
         directory: home.appendingPathComponent("extra"), home: home), configDir: home.appendingPathComponent("extra"))
-    _ = try AccountsCommand(home: home, policy: Policy(accounts: [account]), environment: [:]).run(["list"])
-    let book = try AccountBook.load(AccountBook.fileURL(home: home))
-    #expect(book.accounts.first { $0.id == "plain" }?.label == nil)
+    let command = AccountsCommand(home: home, policy: Policy(accounts: [account]), environment: [:])
+    let entry = try #require(try command.current().accounts.first { $0.id == "plain" })
+    #expect(entry.label == nil)
+    #expect(try labels(command.run(["list", "--json"]))["plain"] == account.label)
+}
+
+@Test func accountsList_ListsAPolicyAccountWhoseFolderIsMissingAndLetsItBeRemoved() throws {
+    let home = try makeHome()
+    defer { try? FileManager.default.removeItem(at: home) }
+    let gone = AccountConfiguration(id: "gone", provider: .claude, label: "Gone", configDir: home.appendingPathComponent("not-there"))
+    let off = AccountConfiguration(id: "off", provider: .codex, label: "Off", configDir: home.appendingPathComponent("extra"), isEnabled: false)
+    let command = AccountsCommand(home: home, policy: Policy(accounts: [gone, off]), environment: [:])
+    let before = try labels(command.run(["list", "--json"]))
+    #expect(before["gone"] == "Gone")
+    #expect(before["off"] == "Off")
+    #expect(try TargetDiscovery.discover(home: home, accounts: [gone, off], environment: [:],
+        book: command.current()).allSatisfy { $0.id != "gone" && $0.id != "off" })
+    for id in ["gone", "off"] { _ = try command.run(["remove", id]) }
+    let after = try labels(command.run(["list", "--json"]))
+    #expect(after["gone"] == nil)
+    #expect(after["off"] == nil)
+}
+
+@Test func accountBook_DoesNotKeepTwoAccountsWithOneIDWhenAPolicyAccountChangesFolder() throws {
+    let home = try makeHome()
+    defer { try? FileManager.default.removeItem(at: home) }
+    let first = AccountConfiguration(id: "work", provider: .claude, label: "Work", configDir: home.appendingPathComponent("extra"))
+    _ = try AccountsCommand(home: home, policy: Policy(accounts: [first]), environment: [:]).edit { _ in }
+    let moved = AccountConfiguration(id: "work", provider: .claude, label: "Work", configDir: home.appendingPathComponent("custom"))
+    let book = try AccountsCommand(home: home, policy: Policy(accounts: [moved]), environment: [:]).current()
+    #expect(Set(book.accounts.map(\.id)).count == book.accounts.count)
+    #expect(book.accounts.first { $0.id == "work" }?.configDir == moved.configDir.path)
+    let targets = try TargetDiscovery.discover(home: home, accounts: [moved], environment: [:], book: book)
+    #expect(Set(targets.map(\.id)).count == targets.count)
+}
+
+@Test func accountBook_LoadingABookWithTwoEntriesOfOneIDFailsAsUnreadable() throws {
+    let home = try makeHome()
+    defer { try? FileManager.default.removeItem(at: home) }
+    let url = AccountBook.fileURL(home: home)
+    try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+    let entry = { (folder: String) in
+        "{\"id\":\"work\",\"provider\":\"claude\",\"config_dir\":\"\(folder)\",\"origin\":\"added\",\"hidden\":false,\"order\":0}"
+    }
+    let text = "{\"schema_version\":1,\"accounts\":[\(entry("/a")),\(entry("/b"))],\"removed_folders\":[]}"
+    try Data(text.utf8).write(to: url)
+    #expect { try AccountBook.load(url) } throws: { ($0 as? CoreError).map { $0.description == CoreError.accountBookUnreadable.description } ?? false }
+}
+
+@Test func accountBook_ANewerLayoutIsReportedAsNewerNotAsDamaged() throws {
+    let home = try makeHome()
+    defer { try? FileManager.default.removeItem(at: home) }
+    let url = AccountBook.fileURL(home: home)
+    try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+    let text = "{\"schema_version\":2,\"accounts\":[{\"id\":\"x\",\"provider\":\"gemini\",\"folder\":\"/a\"}]}"
+    try Data(text.utf8).write(to: url)
+    #expect { try AccountBook.load(url) } throws: { ($0 as? CoreError).map { $0.description == CoreError.storeNewerThanBinary.description } ?? false }
 }
