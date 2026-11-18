@@ -27,7 +27,7 @@ jobs:
       - name: Install Python test dependencies
         run: python3 -m pip install pytest
       - name: Core tests
-        run: swift test
+        run: swift test --no-parallel
       - name: App tests
         run: swift test --package-path App
       - name: Integration tests
