@@ -114,13 +114,30 @@ reading clears it. Missing or expired windows are null. Claude readings
 older than the polling interval are stale; Codex log readings retain their
 source time and are not stale merely because no new request has been made.
 
+The database carries its layout in SQLite's `user_version` (`SnapshotStore.schemaVersion`,
+2 today: 1 added failure reasons and refresh requests, 2 added the `estimated` column on snapshots). Opening migrates an older file in place and stamps it. A file stamped higher than
+the build knows is refused with `CoreError.storeNewerThanBinary` before any change, so an
+older helper cannot corrupt data a newer one wrote. Raise the number with every migration.
+
+Estimated history: the first time an account is read, `UsageService` asks `Backfill` to
+build the current week from the account's transcripts (`TranscriptUsage` reads timestamps
+and token counts only) and stores the points with `estimated = 1` in the same transaction
+as the reading. They never count as readings (`latest`, `hasReadings`), and
+`Forecaster.settled` drops them once three real readings exist in the window.
+
+`PollLock` (an `flock` on `poll.lock` beside the history database) keeps one polling
+process at a time. `UsageService` given a lock reads quota only while it holds it;
+otherwise it serves the store and, on `refresh`, records a request in the store's
+`refresh_requests` table for the holder. See `docs/api.md` for the `poller` field.
+
 Each discovered source has observations in SQLite. Sources are deduplicated only
 by provider and resolved config-directory path. Explicit policy aliases that
 resolve to the canonical directory share its combined history. Distinct directory
 copies stay separate, even for the same signed-in identity or identical quotas.
 
-`AccountStatus.error` carries a safe typed refresh reason to the app. Reasons
-are session-local; failures preserve the last good SQLite reading and its timestamp.
+`AccountStatus.error` carries a safe typed refresh reason to the app. The reason is
+stored with the failure flag, so every process sharing the history shows it; failures
+preserve the last good SQLite reading and its timestamp.
 `serve` watches the policy directory for atomic saves and replaces its cancellable
 polling deadline when the validated interval changes. Invalid policy updates keep
 the last valid policy.
@@ -140,6 +157,12 @@ func advise(_ request: AdviceRequest) async throws -> Advice
 `SystemProcessRunner()` for production. `Forecast`, `UsageWindow`,
 `AccountStatus`, and `StatusDocument` have public initializers for app mocks.
 Use `JSONCodec` for the documented snake_case fields and explicit nulls.
+
+`AccountBook` (with `AccountBookFile` for locked edits and `AccountsCommand` for the `accounts` verbs)
+is the one account list for every client; see "The account list" in `api.md`. The Leeway app keeps
+no account preferences of its own: folders it added and its manual order moved into the book once
+(the book's `app_preferences_imported` flag), while names, targets and reserves still live in the policy file.
+`TargetDiscovery.discover` takes the book and skips removed and hidden folders.
 
 The executable dispatches `integrations` before loading policy or quota data.
 The runtime receives literal arguments without a shell and preserves its exit

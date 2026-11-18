@@ -113,6 +113,8 @@
 "read_error.timeout" = "Lettura scaduta";
 "read_error.not_signed_in" = "Accesso richiesto";
 "read_error.invalid_output" = "Dati quota non validi";
+"read_error.probe_failed" = "Lettura non riuscita";
+"read_error.no_rate_limit_event" = "Nessun dato di quota nell'output";
 
 "Forecast unavailable" = "Previsione non disponibile";
 "target %@" = "target %@";
@@ -122,3 +124,11 @@
 "Most at risk first" = "Il più a rischio prima";
 "Drag accounts to change their order." = "Trascina gli account per cambiarne l’ordine.";
 "Reading" = "Lettura in corso";
+"idle %@" = "inattivo da %@";
+"No %@ activity for %@" = "Nessuna attività %@ da %@";
+"At this pace, you run out on %@" = "A questo ritmo, finisci la quota %@";
+"At this pace, room to spare at the reset" = "A questo ritmo, ti avanza quota al reset";
+"%@, checked %@ ago" = "%@, controllato %@ fa";
+"Folder not found" = "Cartella non trovata";
+"Folder not found. Remove this account in Settings." = "Cartella non trovata. Rimuovi questo account nelle Impostazioni.";
+"Source on GitHub" = "Codice sorgente su GitHub";

@@ -197,3 +197,13 @@ extension AverageOnlyForecastTests {
         XCTAssertEqual(account.status, .onTarget)
     }
 }
+
+final class ActivityBasedReadingTests: XCTestCase {
+    func testAdapter_CodexReadingsFollowActivity_ClaudeReadingsDoNot() {
+        let codex = AccountStatus(id: "codex", label: "Codex", provider: .codex, configDir: "/fixture/.codex")
+        let claude = AccountStatus(id: "claude", label: "Claude", provider: .claude, configDir: "/fixture/.claude")
+        let accounts = CoreSnapshotMapper.map(StatusDocument(generatedAt: Date(), accounts: [codex, claude]))
+        XCTAssertTrue(accounts[0].isActivityBased)
+        XCTAssertFalse(accounts[1].isActivityBased)
+    }
+}

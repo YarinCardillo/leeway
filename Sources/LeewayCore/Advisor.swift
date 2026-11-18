@@ -10,13 +10,14 @@ public enum Advisor {
     /// Applies user policy to cached status, trying eligible accounts in policy order.
     public static func advise(_ request: AdviceRequest, document: StatusDocument, policy: Policy) -> Advice {
         let candidates = candidates(request, accounts: document.accounts, policy: policy)
+            .map { account in request.target.map { account.retargeted(to: $0) } ?? account }
         guard let first = candidates.first else {
             return Advice(verdict: .deny, agent: request.agent?.rawValue ?? "", reason: "no account is allowed for this project")
         }
         var blocks: [Block] = []
         for account in candidates {
             let action = policy.accounts.first { $0.id == account.id }?.overTarget ?? .switch
-            guard let block = block(account) else {
+            guard let block = block(account, history: document.history[account.id] ?? [], action: action, now: document.generatedAt) else {
                 return answer(request, policy, account, verdict: blocks.isEmpty ? .go : .switch,
                     reason: joined(blocks, suffix: room(account, switching: !blocks.isEmpty)))
             }
@@ -42,22 +43,37 @@ public enum Advisor {
             let names = provider == .codex ? allowed.codex : allowed.claude
             return names.map { names in names.flatMap { name in mine.filter { $0.id == name } } } ?? mine
         }
-        guard let selected = request.account else { return ordered }
-        let matches = ordered.filter { $0.id == selected || $0.label == selected }
-        guard matches.count == 1, let preferred = matches.first else { return [] }
-        let reserve = policy.accounts.first { $0.id == preferred.id }?.reserveAccount
-        return [preferred] + ordered.filter { $0.id == reserve && $0.id != preferred.id }
+        guard let preferred = preferredAccount(request, ordered: ordered) else { return [] }
+        if let names = request.candidates {
+            let listed = names.flatMap { name in ordered.filter { $0.id == name || $0.label == name } }
+            return distinct(preferred + listed)
+        }
+        guard let first = preferred.first else { return ordered }
+        let reserve = policy.accounts.first { $0.id == first.id }?.reserveAccount
+        return [first] + ordered.filter { $0.id == reserve && $0.id != first.id }
     }
 
-    private static func block(_ account: AccountStatus) -> Block? {
-        if let five = account.fiveHour.pct, five >= 95 {
-            return Block(reason: "\(account.label) five-hour window is at \(Int(five.rounded()))%",
-                until: account.fiveHour.resetsAt, isWeekly: false)
-        }
-        if account.status == .over {
-            return Block(reason: weeklyReason(account), until: account.sevenDay.resetsAt, isWeekly: true)
-        }
-        return nil
+    /// The account named by `request.account`: empty when none was named, nil when it is unknown or ambiguous.
+    private static func preferredAccount(_ request: AdviceRequest, ordered: [AccountStatus]) -> [AccountStatus]? {
+        guard let selected = request.account else { return [] }
+        let matches = ordered.filter { $0.id == selected || $0.label == selected }
+        return matches.count == 1 ? matches : nil
+    }
+
+    private static func distinct(_ accounts: [AccountStatus]) -> [AccountStatus] {
+        var seen = Set<String>()
+        return accounts.filter { seen.insert($0.id).inserted }
+    }
+
+    /// The account's block, with the earliest time it can be asked again. A five-hour block and an over-target
+    /// week are independent, so when both hold the wait lasts until the later of the two clears.
+    private static func block(_ account: AccountStatus, history: [HistoryPoint], action: TargetAction, now: Date) -> Block? {
+        let weekly = account.status == .over
+            ? Block(reason: weeklyReason(account), until: WeeklyRetry.clearsAt(account, history: history, now: now), isWeekly: true) : nil
+        guard let five = account.fiveHour.pct, five >= 95 else { return weekly }
+        let weeklyUntil = action == .warn ? nil : weekly?.until
+        return Block(reason: "\(account.label) five-hour window is at \(Int(five.rounded()))%",
+            until: account.fiveHour.resetsAt.map { max($0, weeklyUntil ?? $0) }, isWeekly: false)
     }
 
     private static func weeklyReason(_ account: AccountStatus) -> String {
@@ -87,6 +103,17 @@ public enum Advisor {
         let choice = ModelRouter.choose(account.provider, role: request.role, task: request.taskClass, policy: policy)
         return Advice(verdict: verdict, agent: account.provider.rawValue, account: account.id, model: choice.model,
             effort: choice.effort, configDir: account.configDir, reason: reason, retryAt: retry,
-            headroomPct: account.status == .under ? account.forecast.rangeHigh.map { account.targetLow - $0 } : nil)
+            headroomPct: account.status == .under ? account.forecast.rangeHigh.map { account.targetLow - $0 } : nil,
+            targetUsed: account.targetHigh)
+    }
+}
+
+private extension AccountStatus {
+    /// The same reading judged against a caller's landing target instead of the policy target high.
+    /// The low edge never rises above the new high, so the interval stays valid.
+    func retargeted(to target: Double) -> AccountStatus {
+        AccountStatus(id: id, label: label, provider: provider, configDir: configDir, registered: registered,
+            aliases: aliases, plan: plan, fiveHour: fiveHour, sevenDay: sevenDay, forecast: forecast, source: source,
+            stale: stale, error: error, asOf: asOf, targetLow: min(targetLow, target), targetHigh: target)
     }
 }

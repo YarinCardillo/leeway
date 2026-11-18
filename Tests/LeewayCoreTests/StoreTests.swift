@@ -1,4 +1,5 @@
 import Foundation
+import CSQLite
 import Testing
 @testable import LeewayCore
 
@@ -58,4 +59,134 @@ func temporaryDirectory() throws -> URL {
     try store.record(Snapshot(account: "one", at: now,
         sevenDay: UsageWindow(pct: 13, resetsAt: reset.addingTimeInterval(7200))))
     #expect(try store.windowHistory("one", resetsAt: reset).map(\.pct) == [1, 13])
+}
+
+@Test func failureReason_SurvivesReopeningAndEndsWithTheNextReading() throws {
+    let directory = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let path = directory.appendingPathComponent("history.sqlite").path
+    try SnapshotStore(path: path).markFailed("first", at: now, reason: .notSignedIn)
+    let reopened = try SnapshotStore(path: path)
+    #expect(try reopened.failureReason("first") == .notSignedIn)
+    #expect(try reopened.failureReason("first", after: now) == nil)
+    try reopened.record(Snapshot(account: "first", at: now.addingTimeInterval(60), sevenDay: UsageWindow(pct: 5, resetsAt: reset)))
+    #expect(try reopened.failureReason("first") == nil)
+}
+
+@Test func failuresTableWithoutReasonColumn_IsMigratedInPlace() throws {
+    let directory = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let path = directory.appendingPathComponent("history.sqlite").path
+    var legacy: OpaquePointer?
+    #expect(sqlite3_open(path, &legacy) == SQLITE_OK)
+    #expect(sqlite3_exec(legacy, "CREATE TABLE failures (account TEXT PRIMARY KEY NOT NULL, at REAL NOT NULL); INSERT INTO failures VALUES ('first', 100)", nil, nil, nil) == SQLITE_OK)
+    sqlite3_close(legacy)
+    let store = try SnapshotStore(path: path)
+    #expect(try store.hasFailure("first"))
+    #expect(try store.failureReason("first") == nil)
+    try store.markFailed("first", at: now, reason: .timeout)
+    #expect(try store.failureReason("first") == .timeout)
+}
+
+@Test func refreshRequests_CollapseAndAreTakenOnce() throws {
+    let store = try SnapshotStore(path: ":memory:")
+    #expect(try !store.hasRefreshRequest())
+    #expect(try !store.takeRefreshRequest())
+    try store.requestRefresh(at: now)
+    try store.requestRefresh(at: now.addingTimeInterval(5))
+    #expect(try store.hasRefreshRequest())
+    #expect(try store.takeRefreshRequest())
+    #expect(try !store.takeRefreshRequest())
+}
+
+private func storedSchemaVersion(_ path: String) -> Int32 {
+    var connection: OpaquePointer?
+    guard sqlite3_open_v2(path, &connection, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else { return -1 }
+    defer { sqlite3_close(connection) }
+    var statement: OpaquePointer?
+    guard sqlite3_prepare_v2(connection, "PRAGMA user_version", -1, &statement, nil) == SQLITE_OK else { return -1 }
+    defer { sqlite3_finalize(statement) }
+    return sqlite3_step(statement) == SQLITE_ROW ? sqlite3_column_int(statement, 0) : -1
+}
+
+@Test func store_FreshDatabase_RecordsTheCurrentSchemaVersion() throws {
+    let directory = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let path = directory.appendingPathComponent("history.sqlite").path
+    _ = try SnapshotStore(path: path)
+    #expect(SnapshotStore.schemaVersion == 2)
+    #expect(storedSchemaVersion(path) == SnapshotStore.schemaVersion)
+}
+
+@Test func store_UnversionedLegacyDatabase_IsStampedWithoutLosingRows() throws {
+    let directory = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let path = directory.appendingPathComponent("history.sqlite").path
+    var legacy: OpaquePointer?
+    #expect(sqlite3_open(path, &legacy) == SQLITE_OK)
+    #expect(sqlite3_exec(legacy, "CREATE TABLE failures (account TEXT PRIMARY KEY NOT NULL, at REAL NOT NULL); INSERT INTO failures VALUES ('first', 100)", nil, nil, nil) == SQLITE_OK)
+    sqlite3_close(legacy)
+    #expect(storedSchemaVersion(path) == 0)
+    let store = try SnapshotStore(path: path)
+    #expect(try store.hasFailure("first"))
+    #expect(storedSchemaVersion(path) == SnapshotStore.schemaVersion)
+}
+
+@Test func store_NewerSchemaThanTheBinary_IsRefusedAndTheFileIsUntouched() throws {
+    let directory = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let file = directory.appendingPathComponent("history.sqlite")
+    let newer = SnapshotStore.schemaVersion + 1
+    var connection: OpaquePointer?
+    #expect(sqlite3_open(file.path, &connection) == SQLITE_OK)
+    #expect(sqlite3_exec(connection, "CREATE TABLE future (id INTEGER); PRAGMA user_version = \(newer)", nil, nil, nil) == SQLITE_OK)
+    sqlite3_close(connection)
+    let before = try Data(contentsOf: file)
+    do {
+        _ = try SnapshotStore(path: file.path)
+        Issue.record("a store from a newer leeway was opened")
+    } catch CoreError.storeNewerThanBinary {
+    } catch { Issue.record("unexpected error \(error)") }
+    #expect(try Data(contentsOf: file) == before)
+    #expect(storedSchemaVersion(file.path) == newer)
+}
+
+private func openLegacyStoreFile(_ path: String, version: Int) throws {
+    var connection: OpaquePointer?
+    try #require(sqlite3_open(path, &connection) == SQLITE_OK)
+    defer { sqlite3_close(connection) }
+    let sql = """
+        CREATE TABLE snapshots (account TEXT NOT NULL, at REAL NOT NULL, plan TEXT, five_pct REAL, five_reset REAL, week_pct REAL, week_reset REAL, PRIMARY KEY(account, at));
+        CREATE TABLE failures (account TEXT PRIMARY KEY NOT NULL, at REAL NOT NULL, reason TEXT);
+        CREATE TABLE refresh_requests (id INTEGER PRIMARY KEY NOT NULL CHECK (id = 1), at REAL NOT NULL);
+        INSERT INTO snapshots VALUES ('old', \(now.timeIntervalSince1970 - 3600), NULL, NULL, NULL, 20, \(reset.timeIntervalSince1970));
+        PRAGMA user_version = \(version)
+        """
+    try #require(sqlite3_exec(connection, sql, nil, nil, nil) == SQLITE_OK)
+}
+
+@Test func store_VersionOneDatabase_IsMigratedToTwoKeepingItsRowsAsReal() throws {
+    let directory = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let path = directory.appendingPathComponent("history.sqlite").path
+    try openLegacyStoreFile(path, version: 1)
+    let store = try SnapshotStore(path: path)
+    #expect(storedSchemaVersion(path) == 2)
+    #expect(try store.windowHistory("old", resetsAt: reset) == [HistoryPoint(at: now.addingTimeInterval(-3600), pct: 20)])
+    try store.record(Snapshot(account: "old", at: now, sevenDay: UsageWindow(pct: 25, resetsAt: reset)))
+    #expect(try SnapshotStore(path: path).windowHistory("old", resetsAt: reset).map(\.pct) == [20, 25])
+}
+
+@Test func store_EstimatedPoints_AreMarkedAndNeverBecomeTheLatestReading() throws {
+    let store = try SnapshotStore(path: ":memory:")
+    let anchor = Snapshot(account: "new", at: now, sevenDay: UsageWindow(pct: 30, resetsAt: reset))
+    let backfill = [HistoryPoint(at: now.addingTimeInterval(-2 * hour), pct: 10, estimated: true),
+                    HistoryPoint(at: now.addingTimeInterval(-hour), pct: 30, estimated: true)]
+    #expect(try !store.hasReadings("new"))
+    try store.record(anchor, estimated: backfill)
+    #expect(try store.hasReadings("new"))
+    #expect(try store.windowHistory("new", resetsAt: reset) == backfill + [HistoryPoint(at: now, pct: 30)])
+    #expect(try store.latest("new") == anchor)
+    try store.record(anchor, estimated: backfill)
+    #expect(try store.windowHistory("new", resetsAt: reset).count == 3)
 }

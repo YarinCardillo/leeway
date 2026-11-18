@@ -64,8 +64,10 @@ extension LocalizationTests {
     }
 
     func testSourceErrors_LocalizedWithAndWithoutLastReading() {
-        let english = ["CLI unavailable", "Reading timed out", "Sign in required", "Invalid quota output"]
-        let italian = ["CLI non disponibile", "Lettura scaduta", "Accesso richiesto", "Dati quota non validi"]
+        let english = ["CLI unavailable", "Reading timed out", "Sign in required", "Invalid quota output",
+                       "Reading failed", "No usage reading in the output"]
+        let italian = ["CLI non disponibile", "Lettura scaduta", "Accesso richiesto", "Dati quota non validi",
+                       "Lettura non riuscita", "Nessun dato di quota nell'output"]
         for (index, reason) in AccountReadError.allCases.enumerated() {
             for used in [Double(62), nil] {
                 var value = account(used: used)
@@ -319,5 +321,147 @@ extension LocalizationTests {
         XCTAssertEqual(text.menuCaption(value, isRefreshing: true), "Reading usage")
         XCTAssertEqual(text.status(value), "No reading")
         XCTAssertEqual(text.menuCaption(value), "Reading timed out")
+    }
+}
+
+extension LocalizationTests {
+    private var fixedNow: Date { Date(timeIntervalSince1970: 1804200000) }
+
+    private func usage(source: String = "Codex", used: Double = 22, week: Double = 40, recent: Double = 50,
+                       readingAge: TimeInterval = 1980) -> AccountUsage {
+        AccountUsage(id: "fixture", name: "Fixture", source: source, weeklyUsed: used, fiveHourUsed: nil,
+            reset: fixedNow.addingTimeInterval(5 * 86400), fiveHourReset: nil, weekForecast: week, recentForecast: recent,
+            recordedAt: fixedNow.addingTimeInterval(-readingAge), history: [])
+    }
+
+    private func idleCodex() -> AccountUsage {
+        var value = usage()
+        value.isActivityBased = true
+        return value
+    }
+
+    private func overTarget(used: Double = 62, exhaustsIn: TimeInterval? = 2 * 86400) -> AccountUsage {
+        var value = usage(source: "Claude Code", used: used, week: 101, recent: 120, readingAge: 60)
+        value.exhaustsAt = exhaustsIn.map { fixedNow.addingTimeInterval($0) }
+        return value
+    }
+
+    func testReadingAge_ActivityBasedAccount_ShowsIdleTimeInsteadOfAge() throws {
+        let english = try XCTUnwrap(strings(.english).readingAge(idleCodex(), pollingMinutes: 15, now: fixedNow))
+        let italian = try XCTUnwrap(strings(.italian).readingAge(idleCodex(), pollingMinutes: 15, now: fixedNow))
+        XCTAssertTrue(english.hasPrefix("idle "), english)
+        XCTAssertTrue(italian.hasPrefix("inattivo da "), italian)
+        XCTAssertFalse(english.contains("old"), english)
+    }
+
+    func testReadingAgeLabel_ActivityBasedAccount_NamesProviderActivity() throws {
+        let english = try XCTUnwrap(strings(.english).readingAgeLabel(idleCodex(), pollingMinutes: 15, now: fixedNow))
+        let italian = try XCTUnwrap(strings(.italian).readingAgeLabel(idleCodex(), pollingMinutes: 15, now: fixedNow))
+        XCTAssertTrue(english.hasPrefix("No Codex activity for "), english)
+        XCTAssertTrue(italian.hasPrefix("Nessuna attività Codex da "), italian)
+        XCTAssertFalse(english.contains("Reading is"), english)
+    }
+
+    func testDetailReadingAge_UsesFullSentenceOnlyForActivityBasedAccount() {
+        let text = strings(.english)
+        XCTAssertEqual(text.detailReadingAge(idleCodex(), pollingMinutes: 15, now: fixedNow),
+                       text.readingAgeLabel(idleCodex(), pollingMinutes: 15, now: fixedNow))
+        let claude = usage(source: "Claude Code")
+        XCTAssertEqual(text.detailReadingAge(claude, pollingMinutes: 15, now: fixedNow),
+                       text.readingAge(claude, pollingMinutes: 15, now: fixedNow))
+        XCTAssertTrue(text.readingAge(claude, pollingMinutes: 15, now: fixedNow)!.hasSuffix(" old"))
+    }
+
+    func testReadingAge_ActivityBasedAccount_KeepsTheStaleThreshold() {
+        XCTAssertNil(strings(.english).readingAge(idleCodex(), pollingMinutes: 30, now: fixedNow))
+        XCTAssertNil(strings(.english).readingAgeLabel(idleCodex(), pollingMinutes: 30, now: fixedNow))
+    }
+
+    func testHeadline_ActivityBasedAccount_SpeaksFullSentence() {
+        let result = strings(.english).headline(idleCodex(), pollingMinutes: 15, now: fixedNow)
+        XCTAssertTrue(result.hasPrefix("No Codex activity for "), result)
+    }
+
+    func testReadingAgeColor_AmberOnlyForAccountsThatCanBeOutOfDate() {
+        XCTAssertEqual(RiskTextColor.readingAge(idleCodex()), .secondaryLabelColor)
+        XCTAssertEqual(RiskTextColor.readingAge(usage(source: "Claude Code")), .systemOrange)
+    }
+
+    func testPaceLine_ReachesTheLimitBeforeReset_NamesWhenYouRunOut() throws {
+        let value = overTarget()
+        let date = try XCTUnwrap(value.exhaustsAt)
+        XCTAssertEqual(strings(.english).paceLine(value, now: fixedNow),
+                       "At this pace, you run out on " + strings(.english).date(date))
+        XCTAssertEqual(strings(.italian).paceLine(value, now: fixedNow),
+                       "A questo ritmo, finisci la quota " + strings(.italian).date(date))
+    }
+
+    func testPaceLine_ForecastStaysUnderTheLimit_SaysThereIsRoomToSpare() {
+        XCTAssertEqual(strings(.english).paceLine(usage(), now: fixedNow), "At this pace, room to spare at the reset")
+        XCTAssertEqual(strings(.italian).paceLine(usage(), now: fixedNow), "A questo ritmo, ti avanza quota al reset")
+        var onTarget = usage(source: "Claude Code", used: 70, week: 85, recent: 90)
+        onTarget.exhaustsAt = nil
+        XCTAssertEqual(strings(.english).paceLine(onTarget, now: fixedNow), "At this pace, room to spare at the reset")
+    }
+
+    func testPaceLine_NoForecastOrNoHonestSentence_ShowsNothing() {
+        let text = strings(.english)
+        let withoutForecast = AccountUsage(id: "x", name: "X", source: "Codex", weeklyUsed: 20, fiveHourUsed: nil,
+            reset: nil, fiveHourReset: nil, weekForecast: nil, recentForecast: nil, recordedAt: fixedNow, history: [])
+        XCTAssertNil(text.paceLine(withoutForecast, now: fixedNow))
+        XCTAssertNil(text.paceLine(overTarget(exhaustsIn: nil), now: fixedNow))
+        XCTAssertNil(text.paceLine(overTarget(used: 100), now: fixedNow))
+        XCTAssertNil(text.paceLine(overTarget(exhaustsIn: -60), now: fixedNow))
+    }
+
+    func testForecastHeadline_AccountWithPaceLine_AddsItAsSecondCaptionLine() throws {
+        let text = strings(.english)
+        for value in [overTarget(), usage()] {
+            let lines = try XCTUnwrap(text.forecastHeadline(value, now: fixedNow)).caption.components(separatedBy: "\n")
+            XCTAssertEqual(lines.count, 2)
+            XCTAssertTrue(lines[0].hasPrefix("at reset "), lines[0])
+            XCTAssertEqual(lines[1], text.paceLine(value, now: fixedNow))
+        }
+    }
+
+    func testForecastHeadline_WithoutPaceLine_KeepsOneCaptionLine() throws {
+        let caption = try XCTUnwrap(strings(.english).forecastHeadline(overTarget(used: 100), now: fixedNow)).caption
+        XCTAssertFalse(caption.contains("\n"))
+    }
+
+    func testHeadline_AccountWithPaceLine_SpeaksIt() throws {
+        for value in [overTarget(), usage(source: "Claude Code")] {
+            let line = try XCTUnwrap(strings(.english).paceLine(value, now: fixedNow))
+            XCTAssertTrue(strings(.english).headline(value, pollingMinutes: 15, now: fixedNow).hasSuffix(". " + line))
+        }
+    }
+
+    func testReadingAgeLabel_IdleCodexWithCheck_SaysWhenLeewayLastChecked() {
+        var value = idleCodex()
+        value.checkedAt = fixedNow.addingTimeInterval(-120)
+        XCTAssertEqual(strings(.english).readingAgeLabel(value, pollingMinutes: 15, now: fixedNow),
+                       "No Codex activity for 33m, checked 2m ago")
+        let italian = strings(.italian).readingAgeLabel(value, pollingMinutes: 15, now: fixedNow) ?? ""
+        XCTAssertTrue(italian.hasPrefix("Nessuna attività Codex da "), italian)
+        XCTAssertTrue(italian.contains(", controllato "), italian)
+        XCTAssertTrue(italian.hasSuffix(" fa"), italian)
+    }
+
+    func testReadingAgeLabel_IdleCodexNeverChecked_OmitsTheCheck() {
+        XCTAssertEqual(strings(.english).readingAgeLabel(idleCodex(), pollingMinutes: 15, now: fixedNow),
+                       "No Codex activity for 33m")
+    }
+
+    func testReadingAge_IdleCodexRow_StaysShortWithoutTheCheck() {
+        var value = idleCodex()
+        value.checkedAt = fixedNow.addingTimeInterval(-120)
+        XCTAssertEqual(strings(.english).readingAge(value, pollingMinutes: 15, now: fixedNow), "idle 33m")
+    }
+
+    func testHeadline_IdleCodexWithCheck_SpeaksWhenLeewayLastChecked() {
+        var value = idleCodex()
+        value.checkedAt = fixedNow.addingTimeInterval(-120)
+        XCTAssertTrue(strings(.english).headline(value, pollingMinutes: 15, now: fixedNow)
+            .hasPrefix("No Codex activity for 33m, checked 2m ago. "))
     }
 }

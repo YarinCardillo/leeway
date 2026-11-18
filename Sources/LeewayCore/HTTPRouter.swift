@@ -60,13 +60,31 @@ public struct HTTPRouter: Sendable {
 }
 
 extension AdviceRequest {
-    /// Validates the complete v1 request boundary. Invalid inputs throw a safe CoreError.invalidRequest.
+    private static let requestKeys: Set<String> = ["repo", "role", "task_class", "agent", "account", "target", "candidates"]
+
+    /// Validates the complete request boundary. Invalid inputs throw a safe CoreError.invalidRequest.
     public static func parse(_ body: Data) throws -> AdviceRequest {
-        guard let raw = jsonObject(body), Set(raw.keys).isSubset(of: ["repo", "role", "task_class", "agent", "account"]),
+        guard let raw = jsonObject(body), Set(raw.keys).isSubset(of: requestKeys),
               let result = try? JSONCodec.decoder().decode(AdviceRequest.self, from: body),
               !result.repo.isEmpty, result.account == nil || result.account?.isEmpty == false else {
-            throw CoreError.invalidRequest("body must contain a valid repo, role, task_class, agent, and account")
+            throw CoreError.invalidRequest("body must contain a valid repo, role, task_class, agent, account, target, and candidates")
         }
+        try checkTarget(result.target)
+        try checkCandidates(result.candidates)
         return result
+    }
+
+    /// Refuses a landing target outside 1 to 100 percent; nil means the policy target applies.
+    public static func checkTarget(_ target: Double?) throws {
+        guard let target else { return }
+        guard (1...100).contains(target) else { throw CoreError.invalidRequest("target must be between 1 and 100") }
+    }
+
+    /// Refuses an empty list, an empty name, or a repeated name.
+    public static func checkCandidates(_ candidates: [String]?) throws {
+        guard let candidates else { return }
+        guard !candidates.isEmpty, !candidates.contains(""), Set(candidates).count == candidates.count else {
+            throw CoreError.invalidRequest("candidates must be a list of distinct, non-empty account names")
+        }
     }
 }

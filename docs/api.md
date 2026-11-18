@@ -17,7 +17,7 @@ credentials, session content, or filesystem errors in error messages.
 
 Clients ignore additional response properties. Removing fields or changing
 meaning requires a schema version change. Status and refresh responses use
-`schema_version: 3`; advice and errors retain version 1; headroom uses version 2. The URL remains
+`schema_version: 5`; advice uses version 2; errors retain version 1; headroom uses version 2. The URL remains
 `/v1` because this contract has not been published. Nullable response fields are present even when null.
 
 ## GET /v1/status
@@ -47,27 +47,52 @@ App `recorded_at` is mapped directly from `as_of`. Events without a valid percen
 readings, as are percentages outside 0 to 100. Expired windows have null percentage and reset.
 
 `error` is a safe per-account reason for the latest refresh in this service:
-`cli_missing`, `timeout`, `not_signed_in`, or `invalid_output`; successful readings
-clear it. Cached readings and their timestamps survive a failure. Reasons never
-contain stdout, email addresses or authentication details. Detailed reasons are
-session-local; SQLite preserves readings and stale failure flags across restarts.
-The app and the advisor poll independently.
+`cli_missing`, `timeout`, `not_signed_in`, `invalid_output`, `probe_failed` (the Claude probe
+exited with an error and printed no usage event) or `no_rate_limit_event` (the probe ended
+without printing a usage event); successful readings clear it. Cached readings and their timestamps survive a failure. Reasons never
+contain stdout, email addresses or authentication details. SQLite preserves readings,
+stale failure flags and the safe reason of the latest failure across restarts, so a
+process that did not poll shows the same reason as the one that did.
+
+Each `history` point is `[timestamp, percentage]`. A point estimated from the account's own
+session transcripts has a third element, `true`; real readings never carry it. A new account is
+backfilled once, at its first real reading, so its forecast works at once: the hourly token
+counts of the current week's transcripts (Claude `<config_dir>/projects`, Codex `<config_dir>/sessions`)
+are accumulated and scaled so the last estimated point equals that first reading's weekly
+percentage. Only timestamps and token counts are read. From the third real reading in the
+window the estimated points disappear from `history` and from the forecast.
+
+Only one process polls at a time. The polling process holds an exclusive lock on
+`~/Library/Application Support/leeway/poll.lock`; the system releases it when that
+process exits. Any other process, such as the CLI next to the menu bar app, serves
+the shared SQLite history and never launches a probe or reads provider logs while
+a poller exists, so the same account is never read twice in one round. A process
+without the lock tries to take it at each scheduled round (`pollRound()`), so another process takes
+over within one round after the holder quits; a scheduled round in a process that cannot take the lock
+does nothing and never leaves a request. An explicit `refresh` in a process without the
+lock does not probe: it leaves a request in the store, returns the cached status, and the
+polling process takes a reading at its next check (the `serve` command and the menu bar app
+check every 5 seconds, and the app shows the new reading when the poller stores it). `poller` in the status document says which case applies to the
+process that answered: `"self"` (this process holds the lock), `"other"` (another
+process holds it) or `"none"` (nobody is polling, so readings only change on an explicit
+refresh).
 
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "StatusV3",
+  "title": "StatusV5",
   "type": "object",
-  "required": ["schema_version", "generated_at", "accounts", "history"],
+  "required": ["schema_version", "generated_at", "poller", "accounts", "history"],
   "properties": {
-    "schema_version": {"const": 3},
+    "schema_version": {"const": 5},
     "generated_at": {"type": "string", "format": "date-time"},
+    "poller": {"enum": ["self", "other", "none"]},
     "accounts": {"type": "array", "items": {"$ref": "#/$defs/account"}},
     "history": {"type": "object", "additionalProperties": {
       "type": "array", "items": {
         "type": "array", "prefixItems": [
-          {"type": "string", "format": "date-time"}, {"type": "number"}
-        ], "minItems": 2, "maxItems": 2
+          {"type": "string", "format": "date-time"}, {"type": "number"}, {"const": true}
+        ], "minItems": 2, "maxItems": 3
       }
     }}
   },
@@ -111,7 +136,7 @@ The app and the advisor poll independently.
         "forecast": {"$ref": "#/$defs/forecast"},
         "source": {"enum": ["probe", "codex-log", null]},
         "stale": {"type": "boolean"},
-        "error": {"enum": ["cli_missing", "timeout", "not_signed_in", "invalid_output", null]},
+        "error": {"enum": ["cli_missing", "timeout", "not_signed_in", "invalid_output", "probe_failed", "no_rate_limit_event", null]},
         "as_of": {"$ref": "#/$defs/moment"},
         "target_low": {"type": "number", "minimum": 0, "maximum": 100},
         "target_high": {"type": "number", "minimum": 0, "maximum": 100},
@@ -168,7 +193,13 @@ instructions to use the target fields. Reserve-account routing remains available
 
 Optional `account`
 restricts the preferred account by id or unique label; its configured
-reserve account is the next candidate. Optional `agent` restricts the
+reserve account is the next candidate. Optional `candidates` is an ordered list
+of account ids or labels to try after the preferred account, in that order,
+instead of its configured reserve; a repeated or empty name is refused with 400.
+Optional `target` (1 to 100, percent of the week) replaces the policy target high
+of every candidate for this one answer, so a caller can ask where an account lands
+at its reset against its own line; 0, 101 and non-numbers are refused with 400.
+Without `target` the policy applies as before. Optional `agent` restricts the
 provider. Paths are matched against policy projects in order, first match
 wins. Without project rules every enabled account is eligible. Builder and
 reviewer prefer Codex then Claude; other roles use Claude unless `agent` is
@@ -179,14 +210,17 @@ Request JSON Schema:
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "AdviceRequestV1", "type": "object",
+  "title": "AdviceRequestV2", "type": "object",
   "required": ["repo", "role", "task_class"],
   "properties": {
     "repo": {"type": "string", "minLength": 1},
     "role": {"enum": ["builder", "reviewer", "explorer", "planner", "evaluator"]},
     "task_class": {"enum": ["mechanical", "integration", "design"]},
     "agent": {"enum": ["claude", "codex", null]},
-    "account": {"type": ["string", "null"], "minLength": 1}
+    "account": {"type": ["string", "null"], "minLength": 1},
+    "target": {"type": ["number", "null"], "minimum": 1, "maximum": 100},
+    "candidates": {"type": ["array", "null"], "items": {"type": "string", "minLength": 1},
+                   "minItems": 1, "uniqueItems": true}
   },
   "additionalProperties": false
 }
@@ -197,10 +231,10 @@ Response JSON Schema:
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "AdviceV1", "type": "object",
-  "required": ["schema_version", "verdict", "agent", "account", "model", "effort", "config_dir", "reason", "retry_at", "headroom_pct"],
+  "title": "AdviceV2", "type": "object",
+  "required": ["schema_version", "verdict", "agent", "account", "model", "effort", "config_dir", "reason", "retry_at", "headroom_pct", "target_used"],
   "properties": {
-    "schema_version": {"const": 1},
+    "schema_version": {"const": 2},
     "verdict": {"enum": ["go", "switch", "wait", "deny"]},
     "agent": {"enum": ["claude", "codex", ""]},
     "account": {"type": "string"},
@@ -209,10 +243,19 @@ Response JSON Schema:
     "config_dir": {"type": "string"},
     "reason": {"type": "string"},
     "retry_at": {"type": ["string", "null"], "format": "date-time"},
-    "headroom_pct": {"type": ["number", "null"], "minimum": 0}
+    "headroom_pct": {"type": ["number", "null"], "minimum": 0},
+    "target_used": {"type": ["number", "null"], "minimum": 1, "maximum": 100}
   }
 }
 ```
+
+Schema 2 over schema 1 only adds `target_used`: the weekly target high, in percent, the
+answered account was judged against (the caller's `target`, or the account's policy
+target high), null when no account is eligible. Clients that accept schema 1 must also
+accept 2 and ignore the new field. For an over-target week, `wait` carries as `retry_at` the earliest moment the forecast is
+under the line if nothing more is used: the weekly reset, or earlier when the average pace or
+the recent pace, whichever falls to the target first, brings the forecast to it. When a five-hour block holds too,
+`retry_at` is the later of the two.
 
 A five-hour reading at 95 or more blocks the candidate independently of the
 weekly verdict. Weekly steering consumes exactly the account `status`:
@@ -244,14 +287,17 @@ must allow and warn on transport/process failure, as required by the spec.
 API value types are Codable and Sendable. Swift uses camelCase with
 snake_case JSON keys. Dates use Foundation Date, encoded as RFC 3339.
 `UsageProvider` exposes async throwing `status(refresh: Bool)` and
-`advise(_ request: AdviceRequest)`. `UsageService` implements it with an
-injected ProcessRunner and clock. SQLite and source access are serialized.
+`advise(_ request: AdviceRequest)`, plus `servePendingRefresh()` (a no-op unless
+another process asked for a refresh through the store) and `pollRound()` (one scheduled round: it
+reads quota only when this process polls or can take the poll over). `UsageService` implements it with an
+injected ProcessRunner and clock, and an optional `PollLock` that makes it poll only
+while it holds the lock. SQLite and source access are serialized.
 `StatusDocument.accounts` contains `AccountStatus`; `history` maps account
-ids to `[HistoryPoint]` encoded as `[timestamp, percentage]` pairs.
+ids to `[HistoryPoint]` encoded as `[timestamp, percentage]` pairs, or `[timestamp, percentage, true]` for an estimate.
 
 CLI commands: `status [--json]`, `headroom --account <id-or-label> [--json]`,
 `advise --repo <path> --role <role> --task-class <class> [--agent <provider>]
-[--account <id-or-label>]`, `refresh [--json]`, and `serve`.
+[--account <id-or-label>] [--target <percent>] [--candidates <id,id>]`, `refresh [--json]`, and `serve`.
 Advice always prints JSON. Headroom JSON is
 `{"schema_version":2,"account":"id","target_low":75,"target_high":100,"used_pct":20,"headroom_pct":80}`,
 with null usage/headroom when unknown; headroom never falls below zero.
@@ -260,6 +306,41 @@ Normal cached commands never probe Claude. `serve` runs periodic refreshes;
 it observes atomic policy saves and reschedules a cancellable deadline from the
 last refresh when the validated interval changes, without one-second polling.
 `refresh` and the app's Refresh now explicitly opt in to a probe.
+
+`leeway version [--json]` prints the build's contract without opening the store:
+`{"schema_version":1,"version":"0.2.0","status_schema":5,"accounts_schema":1,"advice_schema":2,"store_schema":2}`.
+`store_schema` is the layout of `history.sqlite` this build reads and writes (SQLite
+`user_version`). A build whose `store_schema` is older than the file's refuses `status`,
+`refresh`, `headroom`, `advise` and `serve` before touching it, prints
+`{"schema_version":1,"error":"this leeway is older than the data it would read; use the newer one"}`
+on stdout and exits 3. `version` and `help` still answer, so a caller can compare builds.
+
+### The account list
+
+Every client reads one account book, `~/Library/Application Support/leeway/accounts.json`
+(under `--home` when given): `{"schema_version":1,"accounts":[{"id","provider","label","config_dir","origin","hidden","order"}],"removed_folders":[...]}`.
+`origin` is `discovered` or `added`. `label` is omitted until the user renames the account; the book is the
+only authority for names, and a policy account's explicit `label` is copied into it once, when the book has no
+name for that folder. Discovery reuses every saved entry whose folder exists, whichever process found it.
+Quota targets and routing stay in the policy file. Changes take a lock and replace the file atomically, so the
+app, the CLI and other apps can edit together. A build that finds a newer `schema_version` refuses
+with the exit 3 error above and never rewrites the file; a damaged file is an error, not replaced.
+
+`leeway accounts list|rename <id> <name>|hide <id>|show <id>|remove <id>|add <folder> [--provider claude|codex] [--json]`
+print the updated list. With `--json` it is `{"schema_version":1,"accounts":[{"id","provider","label","origin","hidden","folder_exists","order"}]}`
+in display order. Rows carry no email, no folder path and nothing read from the folder.
+`hide` keeps the row but stops showing and polling the account until `show`. `remove` works for any
+origin and remembers the folder, so discovery never brings it back; `add` of that folder clears the memory.
+`folder_exists` is false for a row whose folder is gone, which stays listed so it can be removed.
+The polling process records newly discovered accounts in the book, so a folder that later disappears stays
+listed. `status` and `refresh` omit hidden and removed accounts.
+
+### Bundling the helper
+
+An app that ships its own `leeway` runs `version --json` on its copy and on the installed
+one (`/Applications/Leeway.app/Contents/Helpers/leeway`, when present). It uses the
+copy with the higher `store_schema`, then the higher `version`, and only a copy whose
+`status_schema` and `advice_schema` it understands. A copy that exits 3 is older than the store: use the other one.
 
 `leeway integrations install|uninstall` dispatches the optional Python runtime
 before loading policy or opening the history database. Installation does not

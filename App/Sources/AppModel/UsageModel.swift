@@ -8,6 +8,8 @@ public final class UsageModel {
     public private(set) var preferences: AppPreferences
     public private(set) var isRefreshing = false
     public private(set) var hasRefreshed = false
+    /// When the last successful refresh finished. A failed refresh leaves it unchanged.
+    public private(set) var lastCheckedAt: Date?
     public private(set) var refreshError: String?
     public private(set) var settingsError: String?
     @ObservationIgnored private var rawAccounts: [AccountUsage] = []
@@ -16,7 +18,9 @@ public final class UsageModel {
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private var pollingTask: Task<Void, Never>?
     @ObservationIgnored private var refreshAfterCurrent = false
+    @ObservationIgnored private var reloadAfterCurrent = false
     private static let preferencesKey = "app.preferences.v1"
+    private static let accountListError = "Could not update the account list. Check that the folder exists and that ~/Library/Application Support/leeway is writable."
 
     public init(provider: any UsageProvider, defaults: UserDefaults = .standard) {
         self.provider = provider
@@ -75,19 +79,39 @@ public final class UsageModel {
     }
 
     /// Coalesces concurrent requests and keeps last successful readings on failure.
-    public func refresh() async {
+    public func refresh() async { await refresh(.requested) }
+
+    private enum Fetch { case requested, scheduled, stored }
+
+    private func refresh(_ first: Fetch) async {
         guard !isRefreshing else { return }
         isRefreshing = true
         defer { isRefreshing = false; hasRefreshed = true }
-        repeat {
+        var fetch = first
+        while true {
             refreshAfterCurrent = false
-            await readAccounts()
-        } while refreshAfterCurrent && !Task.isCancelled
+            reloadAfterCurrent = false
+            await readAccounts(fetch)
+            guard !Task.isCancelled else { return }
+            if refreshAfterCurrent { fetch = .requested }
+            else if reloadAfterCurrent { fetch = .stored }
+            else { return }
+        }
     }
 
-    private func readAccounts() async {
+    /// Shows readings another process stored, without taking one. Never starts a spinner.
+    private func reloadStored() async {
+        guard !isRefreshing else { reloadAfterCurrent = true; return }
+        await readAccounts(.stored)
+    }
+
+    private func readAccounts(_ fetch: Fetch) async {
         do {
-            rawAccounts = try await provider.refresh()
+            switch fetch {
+            case .requested: rawAccounts = try await provider.refresh()
+            case .scheduled: rawAccounts = try await provider.scheduledRefresh()
+            case .stored: rawAccounts = try await provider.reload()
+            }
             preferences = try provider.loadSettings(preferences)
             if preferences.accountOrderMode == .manual {
                 let known = Set(preferences.manualAccountOrder)
@@ -98,6 +122,7 @@ public final class UsageModel {
                 }
             }
             savedPreferences = preferences
+            lastCheckedAt = Date()
             applyPreferences()
             refreshError = nil
         } catch {
@@ -107,14 +132,16 @@ public final class UsageModel {
         }
     }
 
+    /// Starts the scheduled rounds and follows readings that other processes store between them.
     public func startPolling() {
         pollingTask?.cancel()
+        provider.observeStoreChanges { [weak self] in Task { await self?.reloadStored() } }
         pollingTask = Task { [weak self] in
-            await self?.refresh()
+            await self?.refresh(.scheduled)
             while !Task.isCancelled {
                 guard let minutes = self?.preferences.pollingMinutes else { return }
                 do { try await Task.sleep(for: .seconds(minutes * 60)) } catch { return }
-                await self?.refresh()
+                await self?.refresh(.scheduled)
             }
         }
     }
@@ -125,6 +152,9 @@ public final class UsageModel {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         updateAccount(id) { $0.name = trimmed }
+        guard settingsError == nil, let index = rawAccounts.firstIndex(where: { $0.id == id }) else { return }
+        rawAccounts[index].name = trimmed
+        applyPreferences()
     }
 
     /// Saves bounds together; changed handles use five-point steps while unedited policy fractions survive.
@@ -162,14 +192,22 @@ public final class UsageModel {
     public func setLanguage(_ language: AppLanguage) { preferences.language = language; save() }
     public func setAutomaticUpdates(_ isEnabled: Bool) { preferences.updatesAutomatically = isEnabled; save() }
 
+    /// Adds a folder to the account list every Leeway client shares. A refresh then reads it.
     public func addFolder(_ path: String, provider: String = "claude") {
-        guard !preferences.addedFolders.contains(path) else { return }
-        preferences.addedFolders.append(path)
-        preferences.folderProviders[path] = provider
-        save()
+        do { try self.provider.addFolder(path, provider: provider); settingsError = nil }
+        catch { settingsError = Self.accountListError }
     }
 
-    public func removeFolder(_ path: String) { preferences.addedFolders.removeAll { $0 == path }; save() }
+    /// Removes an account of any origin, including one whose folder is gone. Its folder stays out of
+    /// discovery until it is added again.
+    public func removeAccount(_ account: AccountUsage) {
+        do { try provider.removeAccount(account) }
+        catch { settingsError = Self.accountListError; return }
+        rawAccounts.removeAll { $0.id == account.id }
+        preferences.accounts[account.id] = nil
+        preferences.manualAccountOrder.removeAll { $0 == account.id }
+        applyPreferences()
+    }
 
     private func updateAccount(_ id: String, change: (inout AccountPreference) -> Void) {
         let account = rawAccounts.first { $0.id == id }
@@ -183,8 +221,9 @@ public final class UsageModel {
 
     private func applyPreferences() {
         accounts = rawAccounts.map { account in
-            guard let choice = preferences.accounts[account.id] else { return account }
             var result = account
+            result.checkedAt = lastCheckedAt
+            guard let choice = preferences.accounts[account.id] else { return result }
             result.name = choice.name ?? account.name
             result.targetLow = choice.targetLow
             result.targetHigh = choice.targetHigh

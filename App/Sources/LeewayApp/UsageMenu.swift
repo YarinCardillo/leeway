@@ -143,7 +143,8 @@ final class UsageMenu: NSObject, NSMenuDelegate {
             (item.view as? AccountMenuRow)?.update(title: item.attributedTitle)
             updateAccessibility(item, account: account)
         }
-        updatedItem?.title = strings.updated(model.accounts.compactMap(\.recordedAt).max(), isRefreshing: model.isRefreshing) ?? ""
+        let lastCheck = model.accounts.filter { $0.recordedAt != nil }.compactMap(\.checkedAt).max()
+        updatedItem?.title = strings.updated(lastCheck, isRefreshing: model.isRefreshing) ?? ""
         updatedItem?.isHidden = updatedItem?.title.isEmpty ?? true
     }
 
@@ -205,7 +206,7 @@ final class UsageMenu: NSObject, NSMenuDelegate {
             .font: font, .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: paragraph(spacingBefore: Self.lineGap)])
         if let age = strings.readingAge(account, pollingMinutes: model.preferences.pollingMinutes) {
             line.append(NSAttributedString(string: ", " + age, attributes: [
-                .font: font, .foregroundColor: NSColor.systemOrange, .paragraphStyle: paragraph(spacingBefore: Self.lineGap)]))
+                .font: font, .foregroundColor: RiskTextColor.readingAge(account), .paragraphStyle: paragraph(spacingBefore: Self.lineGap)]))
         }
         return line
     }

@@ -4,19 +4,38 @@ public enum PollingLoop {
     private enum Event: Sendable { case interval(Int), deadline(Int), stop }
 
     /// Refreshes immediately, then waits on cancellable deadlines and validated policy changes.
+    /// With `requestCheckSeconds`, also asks the provider that often to serve refreshes other processes requested.
     public static func run(provider: any UsageProvider, minutes: Int,
         changes: AsyncStream<Int>? = nil,
         clock: @Sendable () -> Date = Date.init,
+        requestCheckSeconds: TimeInterval? = nil,
         wait: @escaping @Sendable (TimeInterval) async throws -> Void = { try await Task.sleep(for: .seconds($0)) },
         onError: @Sendable (String) -> Void = { FileHandle.standardError.write(Data(($0 + "\n").utf8)) }) async {
         guard [5, 10, 15, 30].contains(minutes) else { onError("invalid polling interval"); return }
         let (events, send) = AsyncStream<Event>.makeStream()
         let updates = Task { if let changes { for await value in changes { send.yield(.interval(value)) } } }
+        let requests = requestCheckSeconds.map { seconds in
+            serveRequests(every: seconds, wait: wait) { _ = await provider.servePendingRefresh() }
+        }
         await refresh(provider, onError: onError)
         await deadlines(events, send: send, provider: provider, minutes: minutes,
                         clock: clock, wait: wait, onError: onError)
-        updates.cancel(); send.finish()
+        updates.cancel(); requests?.cancel(); send.finish()
         await updates.value
+        await requests?.value
+    }
+
+    /// Runs `serve` every `seconds` until the returned task is cancelled. Clients that poll use it to
+    /// answer refreshes other processes queued in the shared store.
+    public static func serveRequests(every seconds: TimeInterval,
+        wait: @escaping @Sendable (TimeInterval) async throws -> Void = { try await Task.sleep(for: .seconds($0)) },
+        serve: @escaping @Sendable () async -> Void) -> Task<Void, Never> {
+        Task {
+            while !Task.isCancelled {
+                do { try await wait(seconds) } catch { return }
+                await serve()
+            }
+        }
     }
 
     private static func deadlines(_ events: AsyncStream<Event>, send: AsyncStream<Event>.Continuation,
@@ -48,7 +67,7 @@ public enum PollingLoop {
     }
 
     private static func refresh(_ provider: any UsageProvider, onError: @Sendable (String) -> Void) async {
-        do { _ = try await provider.status(refresh: true) }
+        do { try await provider.pollRound() }
         catch { if !Task.isCancelled { onError("quota refresh failed; retrying at the next interval") } }
     }
 

@@ -26,7 +26,7 @@ struct SourceReadings: Sendable {
                         }
                         let snapshot = try ClaudeReader(runner: runner, home: home, environment: environment, clock: clock,
                             isCancelled: { cancellation.isCancelled }).read(target)
-                        return (target.id, snapshot.map { [$0] } ?? [], snapshot == nil ? .invalidOutput : nil)
+                        return (target.id, [snapshot], nil)
                     } catch { return (target.id, [], (error as? AccountReadError) ?? .invalidOutput) }
                 }
                 continuation.resume(returning: readings)

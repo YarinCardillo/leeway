@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.0
+
+- Several copies of Leeway (the app, the command line, agent hooks) now share one set of readings. Only one of them checks usage at a time, so the others never repeat the work or disagree.
+- Accounts live in one account book shared by the app and the command line. Every account can be renamed, hidden or removed, and a new `leeway accounts` command lists and edits them.
+- A new account is filled in with past usage from its transcripts. These points are marked as estimated until a real reading replaces them.
+- The advisor can answer against a landing target you choose, and tells you when to retry once your usage is forecast to fall back under the target. The retry time follows the earlier of the average and recent forecasts, and is checked against the history still available at that time.
+- `leeway version --json` reports the version and the data formats the build understands, so apps that bundle the helper can pick the newer compatible copy.
+- Menu rows for idle accounts say when Leeway last checked, and the pace line covers every forecast.
+- Settings now has a quiet link to the source code on GitHub.
+- Fixes: a failed Claude reading is recorded with its reason instead of being lost; an incomplete reading keeps its reason; removing an account that another account uses as a reserve clears that reserve; a rejected policy no longer stops usage checks; an account book changed by another copy is picked up by the app.
+
 ## 0.1.2
 
 - New app icon: the Leeway wordmark in white on a sage gradient, in the layered macOS 26 format with fallbacks for macOS 14 and 15.
