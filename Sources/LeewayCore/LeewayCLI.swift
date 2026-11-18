@@ -8,9 +8,10 @@ public protocol IntegrationCommand: Sendable {
 public struct LeewayCLI: Sendable {
     private let provider: any UsageProvider
     private let integrations: (any IntegrationCommand)?
+    private let accounts: AccountsCommand?
 
-    public init(provider: any UsageProvider, integrations: (any IntegrationCommand)? = nil) {
-        self.provider = provider; self.integrations = integrations
+    public init(provider: any UsageProvider, integrations: (any IntegrationCommand)? = nil, accounts: AccountsCommand? = nil) {
+        self.provider = provider; self.integrations = integrations; self.accounts = accounts
     }
 
     /// Executes an injected CLI command. Returns stdout text and throws safe input/service errors.
@@ -21,6 +22,11 @@ public struct LeewayCLI: Sendable {
             guard let integrations else { throw CoreError.invalidRequest("Integration commands are unavailable in this build. Install the full Leeway CLI.") }
             return try await integrations.run(Array(arguments.dropFirst()))
         }
+        if command == "accounts" {
+            guard let accounts else { throw CoreError.invalidRequest("Account commands are unavailable in this build.") }
+            return try accounts.run(Array(arguments.dropFirst()))
+        }
+        if command == "version" { return try Self.runVersion(Array(arguments.dropFirst())) }
         let options = try options(Array(arguments.dropFirst()))
         switch command {
         case "status", "refresh":
@@ -35,14 +41,28 @@ public struct LeewayCLI: Sendable {
         }
     }
 
+    /// Answers `version [--json]` from this build alone: it never opens the store, so a
+    /// caller can still ask an older binary what it supports after the store moved on.
+    public static func runVersion(_ arguments: [String]) throws -> String {
+        guard arguments.isEmpty || arguments == ["--json"] else {
+            throw CoreError.invalidRequest("unknown option: \(arguments.first { $0 != "--json" } ?? arguments[0])")
+        }
+        return arguments.isEmpty ? "leeway " + LeewayVersion.current : try JSONCodec.string(VersionInfo.current)
+    }
+
     public static let help = """
     Usage: leeway [--home PATH] [--policy PATH] COMMAND
       status [--json]             Show the latest cached readings and forecasts.
       headroom --account NAME [--json]
                                  Show unused quota below an account's target.
       advise --repo PATH --role ROLE --task-class CLASS [--agent PROVIDER] [--account NAME]
-                                 Recommend an account and model using your rules.
+             [--target PERCENT] [--candidates NAME,NAME]
+                                 Recommend an account and model using your rules,
+                                 or against a landing target of 1 to 100 percent.
       refresh [--json]            Take a new reading, keeping good data on failure.
+      version [--json]            Show the version and the contract versions it speaks.
+      accounts list|rename ID NAME|hide ID|show ID|remove ID|add FOLDER [--provider claude|codex] [--json]
+                                 Manage the account list every Leeway client shares.
       serve                      Poll usage and serve the API on 127.0.0.1.
       integrations install|uninstall
                                  Add or remove opt-in agent hooks.
@@ -79,7 +99,7 @@ public struct LeewayCLI: Sendable {
     }
 
     private func advice(_ options: [String: String]) throws -> AdviceRequest {
-        try check(options, allowed: ["--repo", "--role", "--task-class", "--agent", "--account", "--json"])
+        try check(options, allowed: ["--repo", "--role", "--task-class", "--agent", "--account", "--target", "--candidates", "--json"])
         guard let repo = options["--repo"], !repo.isEmpty,
               let role = options["--role"].flatMap(Role.init(rawValue:)),
               let task = options["--task-class"].flatMap(TaskClass.init(rawValue:)) else {
@@ -87,7 +107,15 @@ public struct LeewayCLI: Sendable {
         }
         let agent = options["--agent"].flatMap(Provider.init(rawValue:))
         if options["--agent"] != nil, agent == nil { throw CoreError.invalidRequest("invalid agent") }
-        return AdviceRequest(repo: repo, role: role, taskClass: task, agent: agent, account: options["--account"])
+        let target = try options["--target"].map { text in
+            guard let value = Double(text) else { throw CoreError.invalidRequest("target must be a number between 1 and 100") }
+            return value
+        }
+        let candidates = options["--candidates"].map { $0.split(separator: ",", omittingEmptySubsequences: false).map(String.init) }
+        try AdviceRequest.checkTarget(target)
+        try AdviceRequest.checkCandidates(candidates)
+        return AdviceRequest(repo: repo, role: role, taskClass: task, agent: agent, account: options["--account"],
+            target: target, candidates: candidates)
     }
 
     private func headroom(_ options: [String: String]) async throws -> String {

@@ -14,14 +14,6 @@ struct AccountsSettings: View {
             ForEach(model.orderedAccounts) { account in accountSettings(account) }
             if model.accounts.isEmpty { Text(strings.text("No accounts found")) }
             Section {
-                ForEach(model.preferences.addedFolders, id: \.self) { folder in
-                    HStack {
-                        Text(folder).font(.subheadline).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
-                        Spacer()
-                        Button(strings.text("Remove")) { model.removeFolder(folder); Task { await model.refresh() } }
-                            .accessibilityLabel(strings.format("Remove %@", folder))
-                    }
-                }
                 Button(strings.text("Add Folder…")) { isChoosingFolder = true }
             }
         }.formStyle(.grouped)
@@ -64,6 +56,7 @@ struct AccountsSettings: View {
                 Text(strings.text("Your weekly usage at reset"))
             }
             reservePicker(account)
+            removeRow(account)
         } header: {
             VStack(alignment: .leading, spacing: 3) {
                 Text(account.name)
@@ -71,6 +64,15 @@ struct AccountsSettings: View {
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
             }
+        }
+    }
+
+    private func removeRow(_ account: AccountUsage) -> some View {
+        LabeledContent {
+            Button(strings.text("Remove")) { model.removeAccount(account); Task { await model.refresh() } }
+                .accessibilityLabel(strings.format("Remove %@", account.name))
+        } label: {
+            if account.isFolderMissing { Text(strings.text("Folder not found")) }
         }
     }
 

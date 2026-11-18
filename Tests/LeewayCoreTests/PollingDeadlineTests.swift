@@ -52,12 +52,15 @@ private final class DeadlineWait: @unchecked Sendable {
     try handle.truncate(atOffset: 0)
     try handle.write(contentsOf: Data("poll_minutes = 10\n".utf8))
     try handle.close()
-    #expect(await nextInterval(updates) == 10)
+    #expect(await nextInterval(updates, settlingOn: 10) == 10)
 }
 
-private func nextInterval(_ changes: AsyncStream<Int>) async -> Int? {
+/// The next interval, or the first one equal to `settlingOn` when given. An in-place rewrite truncates
+/// the file before writing it, and a watcher that wakes in between legitimately reads the empty file's
+/// default interval first.
+private func nextInterval(_ changes: AsyncStream<Int>, settlingOn target: Int? = nil) async -> Int? {
     await withTaskGroup(of: Int?.self) { group in
-        group.addTask { for await value in changes { return value }; return nil }
+        group.addTask { for await value in changes where target == nil || value == target { return value }; return nil }
         group.addTask { try? await Task.sleep(for: .seconds(2)); return nil }
         let value = await group.next() ?? nil
         group.cancelAll()
@@ -78,4 +81,28 @@ private func nextInterval(_ changes: AsyncStream<Int>) async -> Int? {
     try handle.write(contentsOf: Data("poll_minutes = 5\n".utf8))
     try handle.close()
     #expect(await nextInterval(updates) == 5)
+}
+
+private actor RequestCountingProvider: UsageProvider {
+    private(set) var served = 0
+    func status(refresh: Bool) async throws -> StatusDocument { StatusDocument(generatedAt: now) }
+    func advise(_ request: AdviceRequest) async throws -> Advice { Advice(verdict: .go, reason: "fixture") }
+    func servePendingRefresh() async -> Bool { served += 1; return true }
+}
+
+@Test(.timeLimit(.minutes(1))) func pollingLoop_ChecksForRequestsBetweenRounds() async throws {
+    let provider = RequestCountingProvider()
+    let checks = AsyncStream<Int>.makeStream()
+    let polling = Task {
+        await PollingLoop.run(provider: provider, minutes: 15, clock: { now }, requestCheckSeconds: 10,
+            wait: { seconds in
+                if seconds == 10 { checks.1.yield(1); try await Task.sleep(for: .milliseconds(1)) }
+                else { try await Task.sleep(for: .seconds(3600)) }
+            }, onError: { _ in })
+    }
+    var iterator = checks.0.makeAsyncIterator()
+    for _ in 0..<3 { _ = await iterator.next() }
+    polling.cancel()
+    await polling.value
+    #expect(await provider.served >= 2)
 }

@@ -59,3 +59,42 @@ func hourly(_ values: [Double], end: Date = now) -> [HistoryPoint] {
     #expect(AccountRisk.evaluate(low: 30, high: 70, targetLow: 75, targetHigh: 100) == .under)
     #expect(AccountRisk.evaluate(low: 101, high: 110, targetLow: 75, targetHigh: 100) == .over)
 }
+
+private func estimated(_ values: [Double], end: Date) -> [HistoryPoint] {
+    hourly(values, end: end).map { HistoryPoint(at: $0.at, pct: $0.pct, estimated: true) }
+}
+
+@Test func forecast_BackfillPlusOneRealReading_IsProduced() {
+    let backfill = estimated([4, 8, 12, 16, 20, 24, 28], end: now.addingTimeInterval(-hour))
+    let history = backfill + [HistoryPoint(at: now, pct: 30)]
+    let result = Forecaster.forecast(history, resetsAt: reset, now: now)
+    #expect(result.confidence != .none)
+    #expect(result.recentPctAtReset != nil)
+    #expect(result.averagePctAtReset != nil)
+    #expect(Forecaster.forecast(backfill, resetsAt: reset, now: now).confidence != .none)
+}
+
+@Test func forecast_ThreeRealReadings_DropTheEstimatedPoints() {
+    let backfill = estimated([10, 20, 30, 40, 50, 60], end: now.addingTimeInterval(-3 * hour))
+    let real = [HistoryPoint(at: now.addingTimeInterval(-2 * hour), pct: 61), HistoryPoint(at: now.addingTimeInterval(-hour), pct: 62),
+                HistoryPoint(at: now, pct: 63)]
+    #expect(Forecaster.forecast(backfill + real, resetsAt: reset, now: now) == Forecaster.forecast(real, resetsAt: reset, now: now))
+    let twoReal = Array(real.suffix(2))
+    #expect(Forecaster.forecast(backfill + twoReal, resetsAt: reset, now: now) != Forecaster.forecast(twoReal, resetsAt: reset, now: now))
+}
+
+@Test func historyPoint_EstimatedPointsCarryAThirdJsonElementAndRealOnesStayPairs() throws {
+    let points = [HistoryPoint(at: now, pct: 10), HistoryPoint(at: now.addingTimeInterval(60), pct: 11, estimated: true)]
+    let raw = try #require(JSONSerialization.jsonObject(with: JSONCodec.encoder().encode(points)) as? [[Any]])
+    #expect(raw[0].count == 2)
+    #expect(raw[1].count == 3)
+    #expect(raw[1][2] as? Bool == true)
+    #expect(try JSONCodec.decoder().decode([HistoryPoint].self, from: JSONCodec.encoder().encode(points)) == points)
+}
+
+@Test func historyPoint_AnOlderPairDecodesAsReal() throws {
+    let text = "[[\"2026-11-02T09:00:00Z\", 12.5]]"
+    let decoded = try JSONCodec.decoder().decode([HistoryPoint].self, from: Data(text.utf8))
+    #expect(decoded.first?.estimated == false)
+    #expect(decoded.first?.pct == 12.5)
+}

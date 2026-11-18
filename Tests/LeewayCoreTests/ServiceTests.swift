@@ -260,3 +260,210 @@ final class DelayedRunner: ProcessRunner, @unchecked Sendable {
     #expect(account.asOf == now)
     #expect(!account.stale)
 }
+
+private struct SignedOutRunner: ProcessRunner {
+    func run(_ request: ProcessRequest) throws -> ProcessOutput {
+        ProcessOutput(exitCode: 0, stdout: request.arguments.first == "auth" ? "{\"loggedIn\":false}" : "")
+    }
+}
+
+private struct SharedHome {
+    let home: URL, lockPath: String, databasePath: String
+
+    init() throws {
+        home = try temporaryDirectory()
+        try FileManager.default.createDirectory(at: home.appendingPathComponent(".claude"), withIntermediateDirectories: true)
+        lockPath = home.appendingPathComponent("poll.lock").path
+        databasePath = home.appendingPathComponent("history.sqlite").path
+    }
+
+    func service(runner: any ProcessRunner, lock: PollLock, at moment: Date = now) throws -> UsageService {
+        UsageService(home: home, policy: Policy(), store: try SnapshotStore(path: databasePath), runner: runner,
+            environment: [:], clock: { moment }, pollLock: lock)
+    }
+}
+
+@Test func twoServicesOnOneLock_OnlyTheHolderProbesAndTheOtherServesTheStore() async throws {
+    let shared = try SharedHome()
+    defer { try? FileManager.default.removeItem(at: shared.home) }
+    let holderRunner = FakeRunner(output: ProcessOutput(exitCode: 0, stdout: rateEvent(week: 0.5)))
+    let otherRunner = FakeRunner(output: ProcessOutput(exitCode: 0, stdout: rateEvent(week: 0.9)))
+    let holder = try shared.service(runner: holderRunner, lock: PollLock(path: shared.lockPath))
+    let other = try shared.service(runner: otherRunner, lock: PollLock(path: shared.lockPath))
+    let written = try await holder.status(refresh: true)
+    let served = try await other.status(refresh: true)
+    #expect(written.poller == .thisProcess)
+    #expect(served.poller == .otherProcess)
+    #expect(otherRunner.calls.isEmpty)
+    #expect(served.accounts.first?.sevenDay.pct == 50)
+    #expect(served.accounts.first?.asOf == written.accounts.first?.asOf)
+    #expect(try await other.status().accounts.first?.sevenDay.pct == 50)
+    #expect(otherRunner.calls.isEmpty)
+}
+
+@Test func nonHolderServesTheNewestStoreReadingAfterEachPoll() async throws {
+    let shared = try SharedHome()
+    defer { try? FileManager.default.removeItem(at: shared.home) }
+    let holderRunner = FakeRunner(output: ProcessOutput(exitCode: 0, stdout: rateEvent(week: 0.5)))
+    let holder = try shared.service(runner: holderRunner, lock: PollLock(path: shared.lockPath))
+    let other = try shared.service(runner: FakeRunner(), lock: PollLock(path: shared.lockPath))
+    _ = try await holder.status(refresh: true)
+    #expect(try await other.status().accounts.first?.sevenDay.pct == 50)
+    let store = try SnapshotStore(path: shared.databasePath)
+    try store.record(Snapshot(account: "claude-default", at: now.addingTimeInterval(60),
+        sevenDay: UsageWindow(pct: 61, resetsAt: reset)))
+    #expect(try await other.status().accounts.first?.sevenDay.pct == 61)
+}
+
+@Test func whenTheHolderReleases_TheOtherTakesOverAtItsNextRound() async throws {
+    let shared = try SharedHome()
+    defer { try? FileManager.default.removeItem(at: shared.home) }
+    let holderLock = PollLock(path: shared.lockPath)
+    let otherRunner = FakeRunner(output: ProcessOutput(exitCode: 0, stdout: rateEvent(week: 0.7)))
+    let holder = try shared.service(runner: FakeRunner(output: ProcessOutput(exitCode: 0, stdout: rateEvent(week: 0.5))), lock: holderLock)
+    let other = try shared.service(runner: otherRunner, lock: PollLock(path: shared.lockPath), at: now.addingTimeInterval(15 * 60))
+    _ = try await holder.status(refresh: true)
+    _ = try await other.status(refresh: true)
+    #expect(otherRunner.calls.isEmpty)
+    holderLock.release()
+    #expect(try await other.status().poller == .nobody)
+    let taken = try await other.status(refresh: true)
+    #expect(taken.poller == .thisProcess)
+    #expect(!otherRunner.calls.isEmpty)
+    #expect(taken.accounts.first?.sevenDay.pct == 70)
+}
+
+@Test func refreshOnANonHolder_LeavesARequestTheHolderServes() async throws {
+    let shared = try SharedHome()
+    defer { try? FileManager.default.removeItem(at: shared.home) }
+    let holderRunner = FakeRunner(output: ProcessOutput(exitCode: 0, stdout: rateEvent(week: 0.5)))
+    let holder = try shared.service(runner: holderRunner, lock: PollLock(path: shared.lockPath))
+    let otherRunner = FakeRunner()
+    let other = try shared.service(runner: otherRunner, lock: PollLock(path: shared.lockPath))
+    _ = try await holder.status(refresh: true)
+    let callsAfterPoll = holderRunner.calls.count
+    _ = try await other.status(refresh: true)
+    #expect(otherRunner.calls.isEmpty)
+    #expect(try SnapshotStore(path: shared.databasePath).hasRefreshRequest())
+    await holder.servePendingRefresh()
+    #expect(holderRunner.calls.count > callsAfterPoll)
+    #expect(!(try SnapshotStore(path: shared.databasePath).hasRefreshRequest()))
+    let callsAfterServing = holderRunner.calls.count
+    await holder.servePendingRefresh()
+    #expect(holderRunner.calls.count == callsAfterServing)
+}
+
+@Test func servePendingRefresh_ReportsWhetherItServedARequest() async throws {
+    let shared = try SharedHome()
+    defer { try? FileManager.default.removeItem(at: shared.home) }
+    let holder = try shared.service(runner: FakeRunner(output: ProcessOutput(exitCode: 0, stdout: rateEvent(week: 0.5))),
+        lock: PollLock(path: shared.lockPath))
+    let other = try shared.service(runner: FakeRunner(), lock: PollLock(path: shared.lockPath))
+    _ = try await holder.status(refresh: true)
+    #expect(await holder.servePendingRefresh() == false)
+    _ = try await other.status(refresh: true)
+    #expect(await other.servePendingRefresh() == false)
+    #expect(await holder.servePendingRefresh() == true)
+    #expect(await holder.servePendingRefresh() == false)
+}
+
+@Test func statusWithoutAnyPoller_ReportsNoneAndDoesNotTakeTheLock() async throws {
+    let shared = try SharedHome()
+    defer { try? FileManager.default.removeItem(at: shared.home) }
+    let service = try shared.service(runner: FakeRunner(), lock: PollLock(path: shared.lockPath))
+    #expect(try await service.status().poller == .nobody)
+    #expect(PollLock(path: shared.lockPath).tryAcquire())
+}
+
+@Test func serviceWithoutALock_IsItsOwnPoller() async throws {
+    let store = try SnapshotStore(path: ":memory:")
+    let home = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: home) }
+    let service = UsageService(home: home, policy: Policy(), store: store, runner: FakeRunner(), environment: [:], clock: { now })
+    #expect(try await service.status().poller == .thisProcess)
+}
+
+@Test func signedOutReason_IsVisibleToAProcessThatDidNotPoll() async throws {
+    let shared = try SharedHome()
+    defer { try? FileManager.default.removeItem(at: shared.home) }
+    let holder = try shared.service(runner: SignedOutRunner(), lock: PollLock(path: shared.lockPath))
+    let other = try shared.service(runner: FakeRunner(), lock: PollLock(path: shared.lockPath))
+    #expect(try await holder.status(refresh: true).accounts.first?.error == .notSignedIn)
+    let served = try await other.status()
+    #expect(served.accounts.first?.error == .notSignedIn)
+    #expect(served.accounts.first?.stale == true)
+}
+
+private func fiveHourOnlyEvent() -> String {
+    rateEvent().replacingOccurrences(of: "\"seven_day\":", with: "\"ignored\":")
+}
+
+@Test func firstReadingWithoutTheWeeklyWindow_SaysWhyOnTheReaderAndOnAProcessThatDidNotPoll() async throws {
+    let shared = try SharedHome()
+    defer { try? FileManager.default.removeItem(at: shared.home) }
+    let holder = try shared.service(runner: FakeRunner(output: ProcessOutput(exitCode: 0, stdout: fiveHourOnlyEvent())),
+        lock: PollLock(path: shared.lockPath))
+    let other = try shared.service(runner: FakeRunner(), lock: PollLock(path: shared.lockPath))
+    let polled = try #require(try await holder.status(refresh: true).accounts.first)
+    #expect(polled.sevenDay.pct == nil)
+    #expect(polled.stale)
+    #expect(polled.error == .invalidOutput)
+    let served = try #require(try await other.status().accounts.first)
+    #expect(served.stale)
+    #expect(served.error == .invalidOutput)
+}
+
+@Test func partialReadingWithRetainedWindows_KeepsTheWindowsAndSaysWhy() async throws {
+    let shared = try SharedHome()
+    defer { try? FileManager.default.removeItem(at: shared.home) }
+    let store = try SnapshotStore(path: shared.databasePath)
+    try store.record(Snapshot(account: "claude-default", at: now.addingTimeInterval(-hour),
+        sevenDay: UsageWindow(pct: 40, resetsAt: reset)))
+    let holder = try shared.service(runner: FakeRunner(output: ProcessOutput(exitCode: 0, stdout: fiveHourOnlyEvent())),
+        lock: PollLock(path: shared.lockPath))
+    let account = try #require(try await holder.status(refresh: true).accounts.first)
+    #expect(account.sevenDay.pct == 40)
+    #expect(account.error == .invalidOutput)
+}
+
+@Test(.timeLimit(.minutes(1))) func scheduledRoundOnAFollower_ReadsTheStoreAndNeverQueuesARequest() async throws {
+    let shared = try SharedHome()
+    defer { try? FileManager.default.removeItem(at: shared.home) }
+    let holderRunner = FakeRunner(output: ProcessOutput(exitCode: 0, stdout: rateEvent(week: 0.5)))
+    let holder = try shared.service(runner: holderRunner, lock: PollLock(path: shared.lockPath))
+    let followerRunner = FakeRunner()
+    let follower = try shared.service(runner: followerRunner, lock: PollLock(path: shared.lockPath))
+    _ = try await holder.status(refresh: true)
+    let rounds = AsyncStream<Void>.makeStream()
+    let polling = Task {
+        await PollingLoop.run(provider: follower, minutes: 15, clock: { now },
+            wait: { _ in rounds.1.yield(()); try await Task.sleep(for: .seconds(3600)) }, onError: { _ in })
+    }
+    var iterator = rounds.0.makeAsyncIterator()
+    _ = await iterator.next()
+    polling.cancel()
+    await polling.value
+    #expect(followerRunner.calls.isEmpty)
+    #expect(try !SnapshotStore(path: shared.databasePath).hasRefreshRequest())
+}
+
+@Test func scheduledRoundWhenTheHolderIsGone_TakesOverAndPolls() async throws {
+    let shared = try SharedHome()
+    defer { try? FileManager.default.removeItem(at: shared.home) }
+    let runner = FakeRunner(output: ProcessOutput(exitCode: 0, stdout: rateEvent(week: 0.7)))
+    let service = try shared.service(runner: runner, lock: PollLock(path: shared.lockPath))
+    try await service.pollRound()
+    #expect(!runner.calls.isEmpty)
+    #expect(try await service.status().poller == .thisProcess)
+}
+
+@Test func explicitRefreshOnAFollower_StillQueuesARequest() async throws {
+    let shared = try SharedHome()
+    defer { try? FileManager.default.removeItem(at: shared.home) }
+    let holder = try shared.service(runner: FakeRunner(output: ProcessOutput(exitCode: 0, stdout: rateEvent(week: 0.5))),
+        lock: PollLock(path: shared.lockPath))
+    let follower = try shared.service(runner: FakeRunner(), lock: PollLock(path: shared.lockPath))
+    _ = try await holder.status(refresh: true)
+    _ = try await follower.status(refresh: true)
+    #expect(try SnapshotStore(path: shared.databasePath).hasRefreshRequest())
+}

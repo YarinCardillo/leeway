@@ -30,6 +30,19 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(model.accounts.contains(where: \.isStale))
     }
 
+    func testRefresh_SuccessStampsWhenLeewayChecked_FailureKeepsTheLastCheck() async throws {
+        let provider = TestProvider()
+        let model = makeModel(provider: provider)
+        XCTAssertNil(model.lastCheckedAt)
+        await model.refresh()
+        let checked = try XCTUnwrap(model.lastCheckedAt)
+        XCTAssertTrue(model.accounts.allSatisfy { $0.checkedAt == checked })
+        provider.shouldFail = true
+        await model.refresh()
+        XCTAssertEqual(model.lastCheckedAt, checked)
+        XCTAssertTrue(model.accounts.allSatisfy { $0.checkedAt == checked })
+    }
+
     func testPreferences_RenameCeilingReserveAndLanguage_SurviveRefreshAndReload() async {
         let defaults = UserDefaults(suiteName: UUID().uuidString)!
         let model = makeModel(defaults: defaults)

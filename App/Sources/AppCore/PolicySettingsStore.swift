@@ -24,9 +24,10 @@ public struct PolicySettingsStore {
     }
 
     /// Writes atomically after validating the entire proposed policy with the core parser.
-    public func save(_ preferences: AppPreferences, accounts: [AccountUsage], baseline: AppPreferences? = nil) throws {
+    public func save(_ preferences: AppPreferences, accounts: [AccountUsage], baseline: AppPreferences? = nil,
+                     book: AccountBook = AccountBook()) throws {
         let current = try Policy.load(url, home: home)
-        let configurations = try mergedAccounts(current.accounts, preferences: preferences, baseline: baseline, readings: accounts)
+        let configurations = try mergedAccounts(current.accounts, preferences: preferences, baseline: baseline, readings: accounts, book: book)
         let interval = try PolicyAccountEdits.merge(preferences.pollingMinutes,
             baseline: baseline?.pollingMinutes, current: current.pollMinutes)
         let policy = Policy(port: current.port, pollMinutes: interval,
@@ -37,27 +38,45 @@ public struct PolicySettingsStore {
         try PrivateStorage.write(Data(text.utf8), to: url)
     }
 
+    /// Drops policy accounts whose folder the book removed, leaving every other setting as it is. Reserves that
+    /// pointed at a dropped account are cleared. Returns the validated policy text, or nil when nothing changes.
+    public func pruned(removedIn book: AccountBook) throws -> String? {
+        let current = try Policy.load(url, home: home)
+        let kept = current.accounts.filter { !book.isRemoved($0.configDir) }
+        guard kept.count != current.accounts.count else { return nil }
+        let policy = Policy(port: current.port, pollMinutes: current.pollMinutes, codexModel: current.codexModel,
+                            roles: current.roles, accounts: clearingReserves(kept, droppedFrom: current.accounts),
+                            projects: current.projects, defaultAllowed: current.defaultAllowed)
+        let text = try PolicyText.encode(policy)
+        _ = try Policy.parse(text, home: home)
+        return text
+    }
+
+    /// Writes policy text that `pruned(removedIn:)` returned.
+    public func write(prunedText text: String) throws { try PrivateStorage.write(Data(text.utf8), to: url) }
+
     private func mergedAccounts(_ configured: [AccountConfiguration], preferences: AppPreferences,
-                                baseline: AppPreferences?, readings: [AccountUsage]) throws -> [AccountConfiguration] {
-        let removed = Set(preferences.folderProviders.keys).subtracting(preferences.addedFolders)
-        var result = configured.filter { !removed.contains($0.configDir.path) }
+                                baseline: AppPreferences?, readings: [AccountUsage],
+                                book: AccountBook) throws -> [AccountConfiguration] {
+        var result = configured.filter { !book.isRemoved($0.configDir) }
         let reserves = Set(preferences.accounts.values.compactMap(\.reserveID))
         for account in readings where preferences.accounts[account.id] != baseline?.accounts[account.id]
             || reserves.contains(account.id) {
-            for path in [account.folder] + account.aliases where !path.isEmpty && !removed.contains(path)
+            for path in [account.folder] + account.aliases where !path.isEmpty && !book.isRemoved(URL(fileURLWithPath: path))
                 && !result.contains(where: { $0.configDir.path == path }) {
                 result.append(AccountConfiguration(id: path == account.folder ? account.id : stableID(path, prefix: "alias-"),
                     provider: account.source == "Codex" ? .codex : .claude, label: account.name,
                     configDir: URL(fileURLWithPath: path), isEnabled: account.isEnabled, targetLow: account.targetLow, targetHigh: account.targetHigh))
             }
         }
-        for folder in preferences.addedFolders where !result.contains(where: { $0.configDir.path == folder }) {
-            result.append(AccountConfiguration(id: stableID(folder, prefix: "added-"),
-                provider: preferences.folderProviders[folder] == "codex" ? .codex : .claude,
-                label: AccountLabel.defaultName(provider: preferences.folderProviders[folder] == "codex" ? .codex : .claude,
-                    directory: URL(fileURLWithPath: folder), home: home), configDir: URL(fileURLWithPath: folder)))
-        }
-        return try result.map { try applyPreferences(preferences, baseline: baseline, to: $0) }
+        let merged = try result.map { try applyPreferences(preferences, baseline: baseline, to: $0) }
+        return clearingReserves(merged, droppedFrom: configured)
+    }
+
+    private func clearingReserves(_ kept: [AccountConfiguration], droppedFrom all: [AccountConfiguration]) -> [AccountConfiguration] {
+        let keptIDs = Set(kept.map(\.id))
+        let dropped = Set(all.map(\.id)).subtracting(keptIDs)
+        return kept.map { PolicyAccountEdits.clearingReserve(of: $0, whenIn: dropped) }
     }
 
     private func applyPreferences(_ preferences: AppPreferences, baseline: AppPreferences?,

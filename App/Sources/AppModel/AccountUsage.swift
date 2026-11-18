@@ -33,10 +33,16 @@ public struct AccountUsage: Identifiable, Sendable, Equatable {
     public var exhaustsAt: Date?
     public var isEnabled = true
     public var isStale = false
+    /// True when readings arrive only as the provider records its own work, so a refresh cannot make them newer.
+    public var isActivityBased = false
+    /// When Leeway last read this account successfully, whether or not the provider had anything new.
+    public var checkedAt: Date?
     public var error: AccountReadError?
     public var folder: String = ""
     public var aliases: [String] = []
     public var defaultName: String?
+    /// True when the account's folder no longer exists, so no reading can ever arrive.
+    public var isFolderMissing = false
 
     public var hasDefaultName: Bool { name == defaultName }
 
@@ -88,12 +94,28 @@ public struct AccountUsage: Identifiable, Sendable, Equatable {
 /// The app's boundary to the core. Refresh returns the last good data with per-account stale flags.
 @MainActor
 public protocol UsageProvider {
+    /// An explicit refresh the user asked for. A process that does not poll leaves a request for the one that does.
     func refresh() async throws -> [AccountUsage]
+    /// The timer's refresh. It takes a reading only in the process that polls and never asks another process for one.
+    func scheduledRefresh() async throws -> [AccountUsage]
+    /// Reads what is already stored without taking a reading.
+    func reload() async throws -> [AccountUsage]
+    /// Calls `onChange` when readings were stored that this provider has not returned yet.
+    func observeStoreChanges(_ onChange: @escaping @MainActor () -> Void)
     func loadSettings(_ stored: AppPreferences) throws -> AppPreferences
     func saveSettings(_ preferences: AppPreferences, accounts: [AccountUsage]) throws
+    /// Removes an account from every client's list, whatever its origin. The folder stays gone until added again.
+    func removeAccount(_ account: AccountUsage) throws
+    /// Adds a folder to the shared account list.
+    func addFolder(_ path: String, provider: String) throws
 }
 
 public extension UsageProvider {
+    func scheduledRefresh() async throws -> [AccountUsage] { try await refresh() }
+    func reload() async throws -> [AccountUsage] { try await refresh() }
+    func observeStoreChanges(_ onChange: @escaping @MainActor () -> Void) {}
     func loadSettings(_ stored: AppPreferences) throws -> AppPreferences { stored }
     func saveSettings(_ preferences: AppPreferences, accounts: [AccountUsage]) throws {}
+    func removeAccount(_ account: AccountUsage) throws {}
+    func addFolder(_ path: String, provider: String) throws {}
 }

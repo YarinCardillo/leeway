@@ -35,8 +35,8 @@ func sourceFailure_SafeReasonRetainsLastReading(_ code: Int) async throws {
     #expect(!encoded.contains("secret@example.invalid"))
 }
 
-@Test(arguments: [127, 124, 0])
-func probeFailure_ReportsMissingTimeoutOrInvalidOutput(_ code: Int) async throws {
+@Test(arguments: [127, 124, 1, 0])
+func probeFailure_ReportsMissingTimeoutFailedOrNoEvent(_ code: Int) async throws {
     let home = try temporaryDirectory()
     defer { try? FileManager.default.removeItem(at: home) }
     try FileManager.default.createDirectory(at: home.appendingPathComponent(".claude"), withIntermediateDirectories: true)
@@ -45,7 +45,8 @@ func probeFailure_ReportsMissingTimeoutOrInvalidOutput(_ code: Int) async throws
     let service = UsageService(home: home, policy: Policy(), store: try SnapshotStore(path: ":memory:"),
                               runner: runner, environment: [:], clock: { now })
     let account = try #require(try await service.status(refresh: true).accounts.first)
-    #expect(account.error == (code == 127 ? .cliMissing : code == 124 ? .timeout : .invalidOutput))
+    let expected: AccountReadError = code == 127 ? .cliMissing : code == 124 ? .timeout : code == 1 ? .probeFailed : .noRateLimitEvent
+    #expect(account.error == expected)
     #expect(account.asOf == nil)
 }
 
@@ -87,4 +88,48 @@ private final class RecoveringCLI: ProcessRunner, @unchecked Sendable {
     #expect(recovered.error == nil)
     #expect(!recovered.stale)
     #expect(recovered.sevenDay.pct == 94)
+}
+
+@Test(arguments: [1, 0])
+func failedClaudeReading_IsRecordedAsFailure(_ probeCode: Int) async throws {
+    let home = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: home) }
+    try FileManager.default.createDirectory(at: home.appendingPathComponent(".claude"), withIntermediateDirectories: true)
+    let runner = ErrorCLI(auth: ProcessOutput(exitCode: 0, stdout: "{\"loggedIn\":true}"),
+                          probe: ProcessOutput(exitCode: Int32(probeCode), stdout: "private output"))
+    let store = try SnapshotStore(path: ":memory:")
+    let service = UsageService(home: home, policy: Policy(), store: store, runner: runner, environment: [:], clock: { now })
+    let account = try #require(try await service.status(refresh: true).accounts.first)
+    #expect(account.error != nil)
+    #expect(try store.hasFailure(account.id))
+}
+
+private final class ExpiredThenSignedInCLI: ProcessRunner, @unchecked Sendable {
+    private let lock = NSLock()
+    private var isSignedIn = false
+    func signIn() { lock.withLock { isSignedIn = true } }
+    func run(_ request: ProcessRequest) throws -> ProcessOutput {
+        let signedIn = lock.withLock { isSignedIn }
+        if request.arguments.first == "auth" {
+            return ProcessOutput(exitCode: signedIn ? 0 : 1, stdout: "{\"loggedIn\":\(signedIn)}")
+        }
+        return ProcessOutput(exitCode: 0, stdout: rateEvent())
+    }
+}
+
+@Test func expiredLogin_ShowsSignedOutThenReadsAgainAfterSigningIn() async throws {
+    let home = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: home) }
+    try FileManager.default.createDirectory(at: home.appendingPathComponent(".claude"), withIntermediateDirectories: true)
+    let runner = ExpiredThenSignedInCLI()
+    let store = try SnapshotStore(path: ":memory:")
+    let service = UsageService(home: home, policy: Policy(), store: store, runner: runner, environment: [:], clock: { now })
+    let expired = try #require(try await service.status(refresh: true).accounts.first)
+    #expect(expired.error == .notSignedIn)
+    #expect(try store.hasFailure(expired.id))
+    runner.signIn()
+    let recovered = try #require(try await service.status(refresh: true).accounts.first)
+    #expect(recovered.error == nil)
+    #expect(recovered.sevenDay.pct == 94)
+    #expect(try !store.hasFailure(recovered.id))
 }

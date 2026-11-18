@@ -4,4 +4,6 @@ public enum AccountReadError: String, Codable, Error, Sendable, CaseIterable {
     case timeout
     case notSignedIn = "not_signed_in"
     case invalidOutput = "invalid_output"
+    case probeFailed = "probe_failed"
+    case noRateLimitEvent = "no_rate_limit_event"
 }

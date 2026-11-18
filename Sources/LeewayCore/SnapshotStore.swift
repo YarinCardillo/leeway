@@ -3,11 +3,26 @@ import CSQLite
 
 /// Serialized, transactional snapshot storage. Errors never include database paths or data.
 public final class SnapshotStore: @unchecked Sendable {
+    /// The store layout this build reads and writes, kept in SQLite's `user_version`.
+    /// 1 is the layout with failure reasons and refresh requests; 2 adds the `estimated` mark on
+    /// backfilled history. Older databases are migrated in place. Raise it with every migration, never lower it.
+    public static let schemaVersion = 2
+
+    private static let incompleteFailureDelay: TimeInterval = 0.001
+
     private let db: OpaquePointer
     private let lock = NSRecursiveLock()
 
-    /// Opens a local database and initializes the v1 schema. Throws CoreError.storage on failure.
-    public init(path: String) throws {
+    /// Opens a local database and brings it to `schemaVersion`. Throws `CoreError.storeNewerThanBinary`,
+    /// before changing anything, when the file was written by a newer build; otherwise
+    /// `CoreError.storage` on failure.
+    public convenience init(path: String) throws {
+        try self.init(path: path, schemaVersion: Self.schemaVersion, whileMigrating: {})
+    }
+
+    /// Opens a store as a build whose layout is `schemaVersion`. `whileMigrating` runs inside the migration
+    /// transaction, after the stored version is read, so a test can start a second build at that moment.
+    init(path: String, schemaVersion: Int, whileMigrating: () -> Void) throws {
         try PrivateStorage.database(path)
         var connection: OpaquePointer?
         guard sqlite3_open_v2(path, &connection, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, nil) == SQLITE_OK,
@@ -18,9 +33,7 @@ public final class SnapshotStore: @unchecked Sendable {
         db = connection
         sqlite3_busy_timeout(db, 5000)
         do {
-            try execute("CREATE TABLE IF NOT EXISTS snapshots (account TEXT NOT NULL, at REAL NOT NULL, plan TEXT, five_pct REAL, five_reset REAL, week_pct REAL, week_reset REAL, PRIMARY KEY(account, at))")
-            try execute("CREATE INDEX IF NOT EXISTS snapshots_window ON snapshots(account, week_reset, at)")
-            try execute("CREATE TABLE IF NOT EXISTS failures (account TEXT PRIMARY KEY NOT NULL, at REAL NOT NULL)")
+            try migrate(to: schemaVersion, whileMigrating: whileMigrating)
             try PrivateStorage.database(path)
         } catch {
             sqlite3_close(db)
@@ -31,26 +44,23 @@ public final class SnapshotStore: @unchecked Sendable {
     deinit { sqlite3_close(db) }
 
     /// Saves source windows once; missing previously observed active windows retain a failure.
-    public func record(_ snapshot: Snapshot) throws {
+    /// `estimated` points are saved in the same transaction, marked as estimates; they never count as readings.
+    public func record(_ snapshot: Snapshot, estimated: [HistoryPoint] = []) throws {
         try lock.withLock {
             try execute("BEGIN IMMEDIATE")
             do {
-                let statement = try prepare("INSERT OR IGNORE INTO snapshots (account, at, plan, five_pct, five_reset, week_pct, week_reset) VALUES (?, ?, ?, ?, ?, ?, ?)")
-                defer { sqlite3_finalize(statement) }
-                bind(snapshot.account, to: statement, at: 1)
-                sqlite3_bind_double(statement, 2, snapshot.at.timeIntervalSince1970)
-                bind(snapshot.plan, to: statement, at: 3)
-                bind(snapshot.fiveHour.pct, to: statement, at: 4)
-                bind(snapshot.fiveHour.resetsAt?.timeIntervalSince1970, to: statement, at: 5)
-                bind(snapshot.sevenDay.pct, to: statement, at: 6)
-                bind(snapshot.sevenDay.resetsAt?.timeIntervalSince1970, to: statement, at: 7)
-                try finish(statement)
+                try insertReading(snapshot)
+                for point in estimated { try insertEstimated(point, account: snapshot.account, weekReset: snapshot.sevenDay.resetsAt) }
                 let retainedFive = try latestWindow(snapshot.account, weekly: false)
                 let missingActiveFive = snapshot.fiveHour.pct == nil
                     && (retainedFive?.0.resetsAt ?? .distantPast) > snapshot.at
                 if snapshot.sevenDay.pct != nil, !missingActiveFive {
                     try clearFailure(snapshot.account)
-                } else { try markFailed(snapshot.account, at: snapshot.at) }
+                } else {
+                    // Stamped just after the reading: a failure only counts against readings it follows.
+                    try markFailed(snapshot.account, at: snapshot.at.addingTimeInterval(Self.incompleteFailureDelay),
+                        reason: .invalidOutput)
+                }
                 try execute("COMMIT")
             } catch {
                 sqlite3_exec(db, "ROLLBACK", nil, nil, nil)
@@ -59,10 +69,20 @@ public final class SnapshotStore: @unchecked Sendable {
         }
     }
 
+    /// Reports whether the account has any real reading, so a new account can be backfilled once.
+    public func hasReadings(_ account: String) throws -> Bool {
+        try lock.withLock {
+            let statement = try prepare("SELECT 1 FROM snapshots WHERE account = ? AND estimated = 0 LIMIT 1")
+            defer { sqlite3_finalize(statement) }
+            bind(account, to: statement, at: 1)
+            return try row(statement)
+        }
+    }
+
     /// Returns each window's latest valid reading, with the oldest contributing timestamp.
     public func latest(_ account: String) throws -> Snapshot? {
         try lock.withLock {
-            let statement = try prepare("SELECT at, plan, five_pct, five_reset, week_pct, week_reset FROM snapshots WHERE account = ? ORDER BY at DESC LIMIT 1")
+            let statement = try prepare("SELECT at, plan, five_pct, five_reset, week_pct, week_reset FROM snapshots WHERE account = ? AND estimated = 0 ORDER BY at DESC LIMIT 1")
             defer { sqlite3_finalize(statement) }
             bind(account, to: statement, at: 1)
             guard try row(statement) else { return nil }
@@ -81,7 +101,7 @@ public final class SnapshotStore: @unchecked Sendable {
     /// Returns readings since the weekly start, matching the engine timestamp boundary.
     public func windowHistory(_ account: String, resetsAt: Date) throws -> [HistoryPoint] {
         try lock.withLock {
-            let statement = try prepare("SELECT at, week_pct FROM snapshots WHERE account = ? AND at >= ? AND at <= ? AND week_pct IS NOT NULL ORDER BY at")
+            let statement = try prepare("SELECT at, week_pct, estimated FROM snapshots WHERE account = ? AND at >= ? AND at <= ? AND week_pct IS NOT NULL ORDER BY at")
             defer { sqlite3_finalize(statement) }
             bind(account, to: statement, at: 1)
             sqlite3_bind_double(statement, 2, resetsAt.timeIntervalSince1970 - Forecaster.week)
@@ -89,20 +109,75 @@ public final class SnapshotStore: @unchecked Sendable {
             var points: [HistoryPoint] = []
             while try row(statement) {
                 points.append(HistoryPoint(at: Date(timeIntervalSince1970: sqlite3_column_double(statement, 0)),
-                    pct: sqlite3_column_double(statement, 1)))
+                    pct: sqlite3_column_double(statement, 1), estimated: sqlite3_column_int(statement, 2) != 0))
             }
             return points
         }
     }
 
-    /// Persists failure state without replacing the last successful reading.
-    public func markFailed(_ account: String, at: Date) throws {
+    /// Persists failure state, with its safe reason, without replacing the last successful reading.
+    public func markFailed(_ account: String, at: Date, reason: AccountReadError? = nil) throws {
         try lock.withLock {
-            let statement = try prepare("INSERT OR REPLACE INTO failures(account, at) VALUES (?, ?)")
+            let statement = try prepare("INSERT OR REPLACE INTO failures(account, at, reason) VALUES (?, ?, ?)")
             defer { sqlite3_finalize(statement) }
             bind(account, to: statement, at: 1)
             sqlite3_bind_double(statement, 2, at.timeIntervalSince1970)
+            bind(reason?.rawValue, to: statement, at: 3)
             try finish(statement)
+        }
+    }
+
+    /// Returns the safe reason of a failure recorded after `after`, so a process that did not
+    /// poll can still say why an account has no fresh reading.
+    public func failureReason(_ account: String, after: Date? = nil) throws -> AccountReadError? {
+        try lock.withLock {
+            let statement = try prepare("SELECT reason FROM failures WHERE account = ? AND at > ?")
+            defer { sqlite3_finalize(statement) }
+            bind(account, to: statement, at: 1)
+            sqlite3_bind_double(statement, 2, (after ?? .distantPast).timeIntervalSince1970)
+            guard try row(statement) else { return nil }
+            return text(statement, 0).flatMap(AccountReadError.init(rawValue:))
+        }
+    }
+
+    /// Asks the process that polls to take a reading soon. Repeated requests collapse into one.
+    public func requestRefresh(at: Date) throws {
+        try lock.withLock {
+            let statement = try prepare("INSERT OR REPLACE INTO refresh_requests(id, at) VALUES (1, ?)")
+            defer { sqlite3_finalize(statement) }
+            sqlite3_bind_double(statement, 1, at.timeIntervalSince1970)
+            try finish(statement)
+        }
+    }
+
+    /// Reports whether a process that does not poll asked for a reading.
+    public func hasRefreshRequest() throws -> Bool {
+        try lock.withLock {
+            let statement = try prepare("SELECT 1 FROM refresh_requests WHERE id = 1")
+            defer { sqlite3_finalize(statement) }
+            return try row(statement)
+        }
+    }
+
+    /// Removes the pending refresh request. Returns whether one was pending.
+    @discardableResult
+    public func takeRefreshRequest() throws -> Bool {
+        try lock.withLock {
+            let statement = try prepare("DELETE FROM refresh_requests WHERE id = 1")
+            defer { sqlite3_finalize(statement) }
+            try finish(statement)
+            return sqlite3_changes(db) > 0
+        }
+    }
+
+    /// A number that differs between two calls when another connection committed to the database in between.
+    /// Changes made through this connection do not change it. Clients compare it to notice readings stored by another process.
+    public func dataVersion() throws -> Int {
+        try lock.withLock {
+            let statement = try prepare("PRAGMA data_version")
+            defer { sqlite3_finalize(statement) }
+            guard try row(statement) else { throw CoreError.storage }
+            return Int(sqlite3_column_int64(statement, 0))
         }
     }
 
@@ -117,6 +192,79 @@ public final class SnapshotStore: @unchecked Sendable {
         }
     }
 
+    /// Reads the stored version and brings the layout to `schemaVersion` in one write transaction, so a
+    /// build that started earlier can never stamp an older version over a newer build's migration.
+    private func migrate(to schemaVersion: Int, whileMigrating: () -> Void) throws {
+        try execute("BEGIN IMMEDIATE")
+        do {
+            let storedVersion = try userVersion()
+            guard storedVersion <= schemaVersion else { throw CoreError.storeNewerThanBinary }
+            whileMigrating()
+            try execute("CREATE TABLE IF NOT EXISTS snapshots (account TEXT NOT NULL, at REAL NOT NULL, plan TEXT, five_pct REAL, five_reset REAL, week_pct REAL, week_reset REAL, PRIMARY KEY(account, at))")
+            try execute("CREATE INDEX IF NOT EXISTS snapshots_window ON snapshots(account, week_reset, at)")
+            try execute("CREATE TABLE IF NOT EXISTS failures (account TEXT PRIMARY KEY NOT NULL, at REAL NOT NULL, reason TEXT)")
+            try addColumn("reason", definition: "TEXT", to: "failures")
+            try addColumn("estimated", definition: "INTEGER NOT NULL DEFAULT 0", to: "snapshots")
+            try execute("CREATE TABLE IF NOT EXISTS refresh_requests (id INTEGER PRIMARY KEY NOT NULL CHECK (id = 1), at REAL NOT NULL)")
+            if storedVersion < schemaVersion { try execute("PRAGMA user_version = \(schemaVersion)") }
+            try execute("COMMIT")
+        } catch {
+            sqlite3_exec(db, "ROLLBACK", nil, nil, nil)
+            throw error
+        }
+    }
+
+    private func userVersion() throws -> Int {
+        let statement = try prepare("PRAGMA user_version")
+        defer { sqlite3_finalize(statement) }
+        guard try row(statement) else { throw CoreError.storage }
+        return Int(sqlite3_column_int(statement, 0))
+    }
+
+    /// Older stores lack columns added later; each is added in place and never dropped.
+    private func addColumn(_ name: String, definition: String, to table: String) throws {
+        guard try !hasColumn(name, in: table) else { return }
+        // A second process may add the column first; only a missing column afterwards is an error.
+        sqlite3_exec(db, "ALTER TABLE \(table) ADD COLUMN \(name) \(definition)", nil, nil, nil)
+        guard try hasColumn(name, in: table) else { throw CoreError.storage }
+    }
+
+    private func hasColumn(_ name: String, in table: String) throws -> Bool {
+        let statement = try prepare("PRAGMA table_info(\(table))")
+        defer { sqlite3_finalize(statement) }
+        while try row(statement) { if text(statement, 1) == name { return true } }
+        return false
+    }
+
+    private func insertReading(_ snapshot: Snapshot) throws {
+        // A real reading replaces an estimate at the same timestamp; it never replaces another real reading.
+        let statement = try prepare("""
+            INSERT INTO snapshots (account, at, plan, five_pct, five_reset, week_pct, week_reset) VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(account, at) DO UPDATE SET plan = excluded.plan, five_pct = excluded.five_pct,
+                five_reset = excluded.five_reset, week_pct = excluded.week_pct, week_reset = excluded.week_reset, estimated = 0
+            WHERE snapshots.estimated = 1
+            """)
+        defer { sqlite3_finalize(statement) }
+        bind(snapshot.account, to: statement, at: 1)
+        sqlite3_bind_double(statement, 2, snapshot.at.timeIntervalSince1970)
+        bind(snapshot.plan, to: statement, at: 3)
+        bind(snapshot.fiveHour.pct, to: statement, at: 4)
+        bind(snapshot.fiveHour.resetsAt?.timeIntervalSince1970, to: statement, at: 5)
+        bind(snapshot.sevenDay.pct, to: statement, at: 6)
+        bind(snapshot.sevenDay.resetsAt?.timeIntervalSince1970, to: statement, at: 7)
+        try finish(statement)
+    }
+
+    private func insertEstimated(_ point: HistoryPoint, account: String, weekReset: Date?) throws {
+        let statement = try prepare("INSERT OR IGNORE INTO snapshots (account, at, week_pct, week_reset, estimated) VALUES (?, ?, ?, ?, 1)")
+        defer { sqlite3_finalize(statement) }
+        bind(account, to: statement, at: 1)
+        sqlite3_bind_double(statement, 2, point.at.timeIntervalSince1970)
+        sqlite3_bind_double(statement, 3, point.pct)
+        bind(weekReset?.timeIntervalSince1970, to: statement, at: 4)
+        try finish(statement)
+    }
+
     private func clearFailure(_ account: String) throws {
         let statement = try prepare("DELETE FROM failures WHERE account = ?")
         defer { sqlite3_finalize(statement) }
@@ -126,8 +274,8 @@ public final class SnapshotStore: @unchecked Sendable {
 
     private func latestWindow(_ account: String, weekly: Bool) throws -> (UsageWindow, Date)? {
         let query = weekly
-            ? "SELECT at, week_pct, week_reset FROM snapshots WHERE account = ? AND week_pct IS NOT NULL AND week_reset IS NOT NULL ORDER BY at DESC LIMIT 1"
-            : "SELECT at, five_pct, five_reset FROM snapshots WHERE account = ? AND five_pct IS NOT NULL AND five_reset IS NOT NULL ORDER BY at DESC LIMIT 1"
+            ? "SELECT at, week_pct, week_reset FROM snapshots WHERE account = ? AND estimated = 0 AND week_pct IS NOT NULL AND week_reset IS NOT NULL ORDER BY at DESC LIMIT 1"
+            : "SELECT at, five_pct, five_reset FROM snapshots WHERE account = ? AND estimated = 0 AND five_pct IS NOT NULL AND five_reset IS NOT NULL ORDER BY at DESC LIMIT 1"
         let statement = try prepare(query)
         defer { sqlite3_finalize(statement) }
         bind(account, to: statement, at: 1)

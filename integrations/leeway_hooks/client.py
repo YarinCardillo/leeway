@@ -34,7 +34,7 @@ class Advisor:
     def status(self) -> dict:
         """GET the current status snapshot without triggering any local probe."""
         result = self._request("GET", "/v1/status")
-        _version(result, versions=(1, 2, 3))
+        _version(result, versions=(1, 2, 3, 4, 5))
         if not isinstance(result.get("accounts"), list):
             raise ValueError("invalid quota accounts")
         return result
@@ -64,8 +64,8 @@ def _version(value: dict, versions: tuple[int, ...] = (1,)) -> None:
 
 
 def validate_advice(value: dict) -> None:
-    """Validate v1 advice, including empty routing fields on deny and wait responses."""
-    _version(value)
+    """Validate advice (schema 1 or 2), including empty routing fields on deny and wait responses."""
+    _version(value, (1, 2))
     if value.get("verdict") not in {"go", "switch", "wait", "deny"}:
         raise ValueError("invalid quota verdict")
     for key in ("agent", "account", "model", "effort", "config_dir", "reason"):

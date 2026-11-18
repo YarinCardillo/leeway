@@ -113,6 +113,8 @@
 "read_error.timeout" = "Reading timed out";
 "read_error.not_signed_in" = "Sign in required";
 "read_error.invalid_output" = "Invalid quota output";
+"read_error.probe_failed" = "Reading failed";
+"read_error.no_rate_limit_event" = "No usage reading in the output";
 
 "Forecast unavailable" = "Forecast unavailable";
 "target %@" = "target %@";
@@ -122,3 +124,11 @@
 "Most at risk first" = "Most at risk first";
 "Drag accounts to change their order." = "Drag accounts to change their order.";
 "Reading" = "Reading";
+"idle %@" = "idle %@";
+"No %@ activity for %@" = "No %@ activity for %@";
+"At this pace, you run out on %@" = "At this pace, you run out on %@";
+"At this pace, room to spare at the reset" = "At this pace, room to spare at the reset";
+"%@, checked %@ ago" = "%@, checked %@ ago";
+"Folder not found" = "Folder not found";
+"Folder not found. Remove this account in Settings." = "Folder not found. Remove this account in Settings.";
+"Source on GitHub" = "Source on GitHub";
