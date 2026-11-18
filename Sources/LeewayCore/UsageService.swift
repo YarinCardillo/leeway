@@ -3,6 +3,12 @@ import Foundation
 public protocol UsageProvider: Sendable {
     func status(refresh: Bool) async throws -> StatusDocument
     func advise(_ request: AdviceRequest) async throws -> Advice
+    /// Takes a reading now when another process asked for one through the shared store. Does nothing otherwise.
+    func servePendingRefresh() async
+}
+
+public extension UsageProvider {
+    func servePendingRefresh() async {}
 }
 
 public actor UsageService: UsageProvider {
@@ -16,23 +22,53 @@ public actor UsageService: UsageProvider {
     private let runner: any ProcessRunner
     private let environment: [String: String]
     private let clock: @Sendable () -> Date
+    private let pollLock: PollLock?
 
+    /// - Parameter pollLock: When set, only the process holding it reads quota; the others serve the
+    ///   shared store. Without a lock the service always polls, as a single embedded process does.
     public init(home: URL, policy: Policy, store: SnapshotStore, runner: any ProcessRunner,
                 environment: [String: String], clock: @escaping @Sendable () -> Date = Date.init,
-                policyFile: URL? = nil) {
+                policyFile: URL? = nil, pollLock: PollLock? = nil) {
         self.home = home; self.policy = policy; self.store = store; self.runner = runner
         self.environment = environment; self.clock = clock
-        self.policyFile = policyFile
+        self.policyFile = policyFile; self.pollLock = pollLock
     }
 
-    /// Builds cached status. Only explicit refresh may launch a Claude probe.
+    /// Builds cached status. Only explicit refresh may launch a Claude probe, and only in the polling
+    /// process. A refresh in any other process leaves a request in the store for the poller.
     public func status(refresh: Bool = false) async throws -> StatusDocument {
         reloadPolicy()
         let targets = try TargetDiscovery.discover(home: home, accounts: policy.accounts, environment: environment)
-        if refresh { try await refreshReadings(targets) }
-        else if refreshTask == nil { try await refreshReadings(targets.filter { $0.provider == .codex }) }
+        if refresh { try await refreshOrRequest(targets) }
+        else if refreshTask == nil, !isPollerElsewhere { try await refreshReadings(targets.filter { $0.provider == .codex }) }
         reloadPolicy()
         return try cachedStatus()
+    }
+
+    /// Serves a refresh another process requested through the store. Does nothing in a process that does not poll.
+    public func servePendingRefresh() async {
+        guard pollLock?.isHolding ?? true else { return }
+        do {
+            guard try store.hasRefreshRequest() else { return }
+            _ = try await status(refresh: true)
+        } catch { if !Task.isCancelled { FileHandle.standardError.write(Data("requested quota refresh failed\n".utf8)) } }
+    }
+
+    private var isPollerElsewhere: Bool { pollLock.map { !$0.isHolding && $0.isHeldElsewhere() } ?? false }
+
+    private var poller: Poller {
+        guard let pollLock else { return .thisProcess }
+        if pollLock.isHolding { return .thisProcess }
+        return pollLock.isHeldElsewhere() ? .otherProcess : .nobody
+    }
+
+    private func refreshOrRequest(_ targets: [Target]) async throws {
+        guard pollLock?.tryAcquire() ?? true else {
+            try store.requestRefresh(at: clock())
+            return
+        }
+        try store.takeRefreshRequest()
+        try await refreshReadings(targets)
     }
 
     private func cachedStatus() throws -> StatusDocument {
@@ -51,7 +87,7 @@ public actor UsageService: UsageProvider {
             accounts.append(try account(target, snapshot: snapshot, history: points, now: now, incomplete: reading.incomplete))
             history[target.id] = thinned(points)
         }
-        return StatusDocument(generatedAt: now, accounts: accounts, history: history)
+        return StatusDocument(generatedAt: now, poller: poller, accounts: accounts, history: history)
     }
     /// Evaluates policy against cached readings without spending quota.
     public func advise(_ request: AdviceRequest) async throws -> Advice {
@@ -87,7 +123,7 @@ public actor UsageService: UsageProvider {
             try Task.checkCancellation()
             for (id, snapshots, error) in readings {
                 sourceErrors[id] = error
-                if snapshots.isEmpty { try store.markFailed(id, at: clock()) }
+                if snapshots.isEmpty { try store.markFailed(id, at: clock(), reason: error) }
                 for snapshot in snapshots { try store.record(snapshot) }
             }
         }
@@ -108,6 +144,7 @@ public actor UsageService: UsageProvider {
         let configuration = policy.accounts.first { $0.id == target.id }
         let old = target.provider == .claude && snapshot.map { now.timeIntervalSince($0.at) > Double(policy.pollMinutes * 60) } == true
         let failed = try store.hasFailure(target.id, after: snapshot?.at)
+        let error = try sourceErrors[target.id] ?? store.failureReason(target.id, after: snapshot?.at)
         let aliases = policy.accounts.filter {
             $0.provider == target.provider && $0.configDir.path != target.configDir.path
                 && $0.configDir.resolvingSymlinksInPath() == target.configDir.resolvingSymlinksInPath()
@@ -115,7 +152,7 @@ public actor UsageService: UsageProvider {
         return AccountStatus(id: target.id, label: target.label, provider: target.provider, configDir: target.configDir.path,
             registered: target.registered, aliases: aliases, plan: snapshot?.plan, fiveHour: five, sevenDay: week, forecast: forecast,
             source: snapshot == nil ? nil : (target.provider == .claude ? "probe" : "codex-log"),
-            stale: snapshot == nil || old || failed || incomplete || sourceErrors[target.id] != nil, error: sourceErrors[target.id], asOf: snapshot?.at,
+            stale: snapshot == nil || old || failed || incomplete || error != nil, error: error, asOf: snapshot?.at,
             targetLow: configuration?.targetLow ?? 75, targetHigh: configuration?.targetHigh ?? 100)
     }
 

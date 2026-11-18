@@ -136,17 +136,39 @@ public struct AccountStatus: Codable, Equatable, Sendable {
     }
 }
 
+/// Which process polls quota, from the point of view of the process that built the document.
+public enum Poller: String, Codable, Equatable, Sendable {
+    case thisProcess = "self"
+    case otherProcess = "other"
+    case nobody = "none"
+}
+
 public struct StatusDocument: Codable, Equatable, Sendable {
     public let schemaVersion: Int
     public let generatedAt: Date
+    public let poller: Poller
     public let accounts: [AccountStatus]
     public let history: [String: [HistoryPoint]]
 
-    public init(schemaVersion: Int = 3, generatedAt: Date, accounts: [AccountStatus] = [], history: [String: [HistoryPoint]] = [:]) {
+    public init(schemaVersion: Int = 4, generatedAt: Date, poller: Poller = .thisProcess,
+                accounts: [AccountStatus] = [], history: [String: [HistoryPoint]] = [:]) {
         self.schemaVersion = schemaVersion
         self.generatedAt = generatedAt
+        self.poller = poller
         self.accounts = accounts
         self.history = history
+    }
+
+    enum CodingKeys: String, CodingKey { case schemaVersion, generatedAt, poller, accounts, history }
+
+    /// Documents written before schema 4 carry no poller; they decode as `nobody`.
+    public init(from decoder: any Decoder) throws {
+        let fields = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = try fields.decode(Int.self, forKey: .schemaVersion)
+        generatedAt = try fields.decode(Date.self, forKey: .generatedAt)
+        poller = try fields.decodeIfPresent(Poller.self, forKey: .poller) ?? .nobody
+        accounts = try fields.decode([AccountStatus].self, forKey: .accounts)
+        history = try fields.decode([String: [HistoryPoint]].self, forKey: .history)
     }
 }
 

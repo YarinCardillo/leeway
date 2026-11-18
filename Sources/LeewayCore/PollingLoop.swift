@@ -4,19 +4,34 @@ public enum PollingLoop {
     private enum Event: Sendable { case interval(Int), deadline(Int), stop }
 
     /// Refreshes immediately, then waits on cancellable deadlines and validated policy changes.
+    /// With `requestCheckSeconds`, also asks the provider that often to serve refreshes other processes requested.
     public static func run(provider: any UsageProvider, minutes: Int,
         changes: AsyncStream<Int>? = nil,
         clock: @Sendable () -> Date = Date.init,
+        requestCheckSeconds: TimeInterval? = nil,
         wait: @escaping @Sendable (TimeInterval) async throws -> Void = { try await Task.sleep(for: .seconds($0)) },
         onError: @Sendable (String) -> Void = { FileHandle.standardError.write(Data(($0 + "\n").utf8)) }) async {
         guard [5, 10, 15, 30].contains(minutes) else { onError("invalid polling interval"); return }
         let (events, send) = AsyncStream<Event>.makeStream()
         let updates = Task { if let changes { for await value in changes { send.yield(.interval(value)) } } }
+        let requests = serveRequests(provider, every: requestCheckSeconds, wait: wait)
         await refresh(provider, onError: onError)
         await deadlines(events, send: send, provider: provider, minutes: minutes,
                         clock: clock, wait: wait, onError: onError)
-        updates.cancel(); send.finish()
+        updates.cancel(); requests.cancel(); send.finish()
         await updates.value
+        await requests.value
+    }
+
+    private static func serveRequests(_ provider: any UsageProvider, every seconds: TimeInterval?,
+        wait: @escaping @Sendable (TimeInterval) async throws -> Void) -> Task<Void, Never> {
+        Task {
+            guard let seconds else { return }
+            while !Task.isCancelled {
+                do { try await wait(seconds) } catch { return }
+                await provider.servePendingRefresh()
+            }
+        }
     }
 
     private static func deadlines(_ events: AsyncStream<Event>, send: AsyncStream<Event>.Continuation,

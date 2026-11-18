@@ -4,6 +4,9 @@ import LeewayCore
 
 @main
 struct LeewayMain {
+    /// How often a polling `serve` looks for refreshes that another process left in the store.
+    private static let requestCheckSeconds: TimeInterval = 5
+
     static func main() async {
         do { try await run() }
         catch {
@@ -39,7 +42,7 @@ struct LeewayMain {
         FileHandle.standardError.write(Data("Leeway listening on http://127.0.0.1:\(server.port)\n".utf8))
         let polling = Task {
             await PollingLoop.run(provider: service, minutes: policy.pollMinutes,
-                changes: changes)
+                changes: changes, requestCheckSeconds: requestCheckSeconds)
         }
         await signals.wait()
         server.stop()
@@ -52,6 +55,7 @@ struct LeewayMain {
         let directory = options.home.appendingPathComponent("Library/Application Support/leeway")
         let store = try SnapshotStore(path: directory.appendingPathComponent("history.sqlite").path)
         return UsageService(home: options.home, policy: policy, store: store, runner: runner,
-            environment: ProcessInfo.processInfo.environment, policyFile: options.policyFile)
+            environment: ProcessInfo.processInfo.environment, policyFile: options.policyFile,
+            pollLock: PollLock(path: directory.appendingPathComponent("poll.lock").path))
     }
 }

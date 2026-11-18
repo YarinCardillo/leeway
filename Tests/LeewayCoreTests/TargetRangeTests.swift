@@ -79,10 +79,11 @@ func targetOver_ReportsEarlyHoursAndSeverity(_ early: Double, _ severity: RiskSe
     #expect(overlap.severity == nil)
 }
 
-@Test func targetStatus_EncodesV3AndExplicitNulls() throws {
+@Test func targetStatus_EncodesV4AndExplicitNulls() throws {
     let data = try JSONCodec.encoder().encode(StatusDocument(generatedAt: now, accounts: [rangeAccount(70, 84)]))
     let raw = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
-    #expect(raw["schema_version"] as? Int == 3)
+    #expect(raw["schema_version"] as? Int == 4)
+    #expect(raw["poller"] as? String == "self")
     let item = try #require((raw["accounts"] as? [[String: Any]])?.first)
     #expect(item["target_low"] as? Double == 75)
     #expect(item["target_high"] as? Double == 100)

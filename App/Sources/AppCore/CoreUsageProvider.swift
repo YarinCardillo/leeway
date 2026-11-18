@@ -25,8 +25,11 @@ public final class CoreUsageProvider: AppModel.UsageProvider {
         let settings = PolicySettingsStore(url: home.appendingPathComponent(".config/leeway/policy.toml"), home: home)
         let processEnvironment = CLIEnvironment.forApplication(home: home, inherited: environment)
         let runner = SystemProcessRunner()
+        // One lock for the app's lifetime: each refresh builds a new service, but the app stays the poller.
+        let pollLock = PollLock(path: directory.appendingPathComponent("poll.lock").path)
         let provider = CoreUsageProvider(settings: settings) { policy in
-            UsageService(home: home, policy: policy, store: store, runner: runner, environment: processEnvironment)
+            UsageService(home: home, policy: policy, store: store, runner: runner, environment: processEnvironment,
+                         pollLock: pollLock)
         }
         provider.shutdownObserver = ProbeShutdownObserver(runner: runner)
         return provider

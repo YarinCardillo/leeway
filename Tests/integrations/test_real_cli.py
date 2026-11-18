@@ -176,7 +176,7 @@ def test_finding_9_trickled_requests_expire_and_release_all_workers(real_cli, tm
             thread.start()
             # Beyond the advertised two-second request bound, all slots must be free.
             time.sleep(2.4)
-            assert get_status(port, timeout=0.7)["schema_version"] == 3
+            assert get_status(port, timeout=0.7)["schema_version"] == 4
         finally:
             stop.set()
             for client in clients:
@@ -255,7 +255,7 @@ def test_status_client_accepts_real_status_schema_3(real_cli, tmp_path):
     policy = tmp_path / "policy.toml"
     policy.write_text("")
     with running_server(real_cli, tmp_path, policy) as (port, _):
-        assert Advisor(f"http://127.0.0.1:{port}").status()["schema_version"] == 3
+        assert Advisor(f"http://127.0.0.1:{port}").status()["schema_version"] == 4
 
 
 @pytest.mark.parametrize("used,start,remaining,status,forecast", [

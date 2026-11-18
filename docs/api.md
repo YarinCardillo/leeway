@@ -17,7 +17,7 @@ credentials, session content, or filesystem errors in error messages.
 
 Clients ignore additional response properties. Removing fields or changing
 meaning requires a schema version change. Status and refresh responses use
-`schema_version: 3`; advice and errors retain version 1; headroom uses version 2. The URL remains
+`schema_version: 4`; advice and errors retain version 1; headroom uses version 2. The URL remains
 `/v1` because this contract has not been published. Nullable response fields are present even when null.
 
 ## GET /v1/status
@@ -50,19 +50,34 @@ readings, as are percentages outside 0 to 100. Expired windows have null percent
 `cli_missing`, `timeout`, `not_signed_in`, `invalid_output`, `probe_failed` (the Claude probe
 exited with an error and printed no usage event) or `no_rate_limit_event` (the probe ended
 without printing a usage event); successful readings clear it. Cached readings and their timestamps survive a failure. Reasons never
-contain stdout, email addresses or authentication details. Detailed reasons are
-session-local; SQLite preserves readings and stale failure flags across restarts.
-The app and the advisor poll independently.
+contain stdout, email addresses or authentication details. SQLite preserves readings,
+stale failure flags and the safe reason of the latest failure across restarts, so a
+process that did not poll shows the same reason as the one that did.
+
+Only one process polls at a time. The polling process holds an exclusive lock on
+`~/Library/Application Support/leeway/poll.lock`; the system releases it when that
+process exits. Any other process, such as the CLI next to the menu bar app, serves
+the shared SQLite history and never launches a probe or reads provider logs while
+a poller exists, so the same account is never read twice in one round. A process
+without the lock tries to take it at each refresh round, so another process takes
+over within one round after the holder quits. A `refresh` in a process without the
+lock does not probe: it leaves a request in the store, returns the cached status, and the
+polling process takes a reading at its next check (the `serve` command checks every
+5 seconds). `poller` in the status document says which case applies to the
+process that answered: `"self"` (this process holds the lock), `"other"` (another
+process holds it) or `"none"` (nobody is polling, so readings only change on an explicit
+refresh).
 
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "StatusV3",
+  "title": "StatusV4",
   "type": "object",
-  "required": ["schema_version", "generated_at", "accounts", "history"],
+  "required": ["schema_version", "generated_at", "poller", "accounts", "history"],
   "properties": {
-    "schema_version": {"const": 3},
+    "schema_version": {"const": 4},
     "generated_at": {"type": "string", "format": "date-time"},
+    "poller": {"enum": ["self", "other", "none"]},
     "accounts": {"type": "array", "items": {"$ref": "#/$defs/account"}},
     "history": {"type": "object", "additionalProperties": {
       "type": "array", "items": {
@@ -245,8 +260,10 @@ must allow and warn on transport/process failure, as required by the spec.
 API value types are Codable and Sendable. Swift uses camelCase with
 snake_case JSON keys. Dates use Foundation Date, encoded as RFC 3339.
 `UsageProvider` exposes async throwing `status(refresh: Bool)` and
-`advise(_ request: AdviceRequest)`. `UsageService` implements it with an
-injected ProcessRunner and clock. SQLite and source access are serialized.
+`advise(_ request: AdviceRequest)`, plus `servePendingRefresh()` (a no-op unless
+another process asked for a refresh through the store). `UsageService` implements it with an
+injected ProcessRunner and clock, and an optional `PollLock` that makes it poll only
+while it holds the lock. SQLite and source access are serialized.
 `StatusDocument.accounts` contains `AccountStatus`; `history` maps account
 ids to `[HistoryPoint]` encoded as `[timestamp, percentage]` pairs.
 

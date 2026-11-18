@@ -79,3 +79,27 @@ private func nextInterval(_ changes: AsyncStream<Int>) async -> Int? {
     try handle.close()
     #expect(await nextInterval(updates) == 5)
 }
+
+private actor RequestCountingProvider: UsageProvider {
+    private(set) var served = 0
+    func status(refresh: Bool) async throws -> StatusDocument { StatusDocument(generatedAt: now) }
+    func advise(_ request: AdviceRequest) async throws -> Advice { Advice(verdict: .go, reason: "fixture") }
+    func servePendingRefresh() async { served += 1 }
+}
+
+@Test(.timeLimit(.minutes(1))) func pollingLoop_ChecksForRequestsBetweenRounds() async throws {
+    let provider = RequestCountingProvider()
+    let checks = AsyncStream<Int>.makeStream()
+    let polling = Task {
+        await PollingLoop.run(provider: provider, minutes: 15, clock: { now }, requestCheckSeconds: 10,
+            wait: { seconds in
+                if seconds == 10 { checks.1.yield(1); try await Task.sleep(for: .milliseconds(1)) }
+                else { try await Task.sleep(for: .seconds(3600)) }
+            }, onError: { _ in })
+    }
+    var iterator = checks.0.makeAsyncIterator()
+    for _ in 0..<3 { _ = await iterator.next() }
+    polling.cancel()
+    await polling.value
+    #expect(await provider.served >= 2)
+}

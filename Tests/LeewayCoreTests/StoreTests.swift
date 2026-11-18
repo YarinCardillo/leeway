@@ -1,4 +1,5 @@
 import Foundation
+import CSQLite
 import Testing
 @testable import LeewayCore
 
@@ -58,4 +59,42 @@ func temporaryDirectory() throws -> URL {
     try store.record(Snapshot(account: "one", at: now,
         sevenDay: UsageWindow(pct: 13, resetsAt: reset.addingTimeInterval(7200))))
     #expect(try store.windowHistory("one", resetsAt: reset).map(\.pct) == [1, 13])
+}
+
+@Test func failureReason_SurvivesReopeningAndEndsWithTheNextReading() throws {
+    let directory = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let path = directory.appendingPathComponent("history.sqlite").path
+    try SnapshotStore(path: path).markFailed("first", at: now, reason: .notSignedIn)
+    let reopened = try SnapshotStore(path: path)
+    #expect(try reopened.failureReason("first") == .notSignedIn)
+    #expect(try reopened.failureReason("first", after: now) == nil)
+    try reopened.record(Snapshot(account: "first", at: now.addingTimeInterval(60), sevenDay: UsageWindow(pct: 5, resetsAt: reset)))
+    #expect(try reopened.failureReason("first") == nil)
+}
+
+@Test func failuresTableWithoutReasonColumn_IsMigratedInPlace() throws {
+    let directory = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let path = directory.appendingPathComponent("history.sqlite").path
+    var legacy: OpaquePointer?
+    #expect(sqlite3_open(path, &legacy) == SQLITE_OK)
+    #expect(sqlite3_exec(legacy, "CREATE TABLE failures (account TEXT PRIMARY KEY NOT NULL, at REAL NOT NULL); INSERT INTO failures VALUES ('first', 100)", nil, nil, nil) == SQLITE_OK)
+    sqlite3_close(legacy)
+    let store = try SnapshotStore(path: path)
+    #expect(try store.hasFailure("first"))
+    #expect(try store.failureReason("first") == nil)
+    try store.markFailed("first", at: now, reason: .timeout)
+    #expect(try store.failureReason("first") == .timeout)
+}
+
+@Test func refreshRequests_CollapseAndAreTakenOnce() throws {
+    let store = try SnapshotStore(path: ":memory:")
+    #expect(try !store.hasRefreshRequest())
+    #expect(try !store.takeRefreshRequest())
+    try store.requestRefresh(at: now)
+    try store.requestRefresh(at: now.addingTimeInterval(5))
+    #expect(try store.hasRefreshRequest())
+    #expect(try store.takeRefreshRequest())
+    #expect(try !store.takeRefreshRequest())
 }

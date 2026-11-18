@@ -20,7 +20,9 @@ public final class SnapshotStore: @unchecked Sendable {
         do {
             try execute("CREATE TABLE IF NOT EXISTS snapshots (account TEXT NOT NULL, at REAL NOT NULL, plan TEXT, five_pct REAL, five_reset REAL, week_pct REAL, week_reset REAL, PRIMARY KEY(account, at))")
             try execute("CREATE INDEX IF NOT EXISTS snapshots_window ON snapshots(account, week_reset, at)")
-            try execute("CREATE TABLE IF NOT EXISTS failures (account TEXT PRIMARY KEY NOT NULL, at REAL NOT NULL)")
+            try execute("CREATE TABLE IF NOT EXISTS failures (account TEXT PRIMARY KEY NOT NULL, at REAL NOT NULL, reason TEXT)")
+            try addFailureReasonColumn()
+            try execute("CREATE TABLE IF NOT EXISTS refresh_requests (id INTEGER PRIMARY KEY NOT NULL CHECK (id = 1), at REAL NOT NULL)")
             try PrivateStorage.database(path)
         } catch {
             sqlite3_close(db)
@@ -95,14 +97,58 @@ public final class SnapshotStore: @unchecked Sendable {
         }
     }
 
-    /// Persists failure state without replacing the last successful reading.
-    public func markFailed(_ account: String, at: Date) throws {
+    /// Persists failure state, with its safe reason, without replacing the last successful reading.
+    public func markFailed(_ account: String, at: Date, reason: AccountReadError? = nil) throws {
         try lock.withLock {
-            let statement = try prepare("INSERT OR REPLACE INTO failures(account, at) VALUES (?, ?)")
+            let statement = try prepare("INSERT OR REPLACE INTO failures(account, at, reason) VALUES (?, ?, ?)")
             defer { sqlite3_finalize(statement) }
             bind(account, to: statement, at: 1)
             sqlite3_bind_double(statement, 2, at.timeIntervalSince1970)
+            bind(reason?.rawValue, to: statement, at: 3)
             try finish(statement)
+        }
+    }
+
+    /// Returns the safe reason of a failure recorded after `after`, so a process that did not
+    /// poll can still say why an account has no fresh reading.
+    public func failureReason(_ account: String, after: Date? = nil) throws -> AccountReadError? {
+        try lock.withLock {
+            let statement = try prepare("SELECT reason FROM failures WHERE account = ? AND at > ?")
+            defer { sqlite3_finalize(statement) }
+            bind(account, to: statement, at: 1)
+            sqlite3_bind_double(statement, 2, (after ?? .distantPast).timeIntervalSince1970)
+            guard try row(statement) else { return nil }
+            return text(statement, 0).flatMap(AccountReadError.init(rawValue:))
+        }
+    }
+
+    /// Asks the process that polls to take a reading soon. Repeated requests collapse into one.
+    public func requestRefresh(at: Date) throws {
+        try lock.withLock {
+            let statement = try prepare("INSERT OR REPLACE INTO refresh_requests(id, at) VALUES (1, ?)")
+            defer { sqlite3_finalize(statement) }
+            sqlite3_bind_double(statement, 1, at.timeIntervalSince1970)
+            try finish(statement)
+        }
+    }
+
+    /// Reports whether a process that does not poll asked for a reading.
+    public func hasRefreshRequest() throws -> Bool {
+        try lock.withLock {
+            let statement = try prepare("SELECT 1 FROM refresh_requests WHERE id = 1")
+            defer { sqlite3_finalize(statement) }
+            return try row(statement)
+        }
+    }
+
+    /// Removes the pending refresh request. Returns whether one was pending.
+    @discardableResult
+    public func takeRefreshRequest() throws -> Bool {
+        try lock.withLock {
+            let statement = try prepare("DELETE FROM refresh_requests WHERE id = 1")
+            defer { sqlite3_finalize(statement) }
+            try finish(statement)
+            return sqlite3_changes(db) > 0
         }
     }
 
@@ -115,6 +161,21 @@ public final class SnapshotStore: @unchecked Sendable {
             sqlite3_bind_double(statement, 2, (after ?? .distantPast).timeIntervalSince1970)
             return try row(statement)
         }
+    }
+
+    /// Older stores keep failures without a reason; the column is added in place and never dropped.
+    private func addFailureReasonColumn() throws {
+        guard try !hasFailureReasonColumn() else { return }
+        // A second process may add the column first; only a missing column afterwards is an error.
+        sqlite3_exec(db, "ALTER TABLE failures ADD COLUMN reason TEXT", nil, nil, nil)
+        guard try hasFailureReasonColumn() else { throw CoreError.storage }
+    }
+
+    private func hasFailureReasonColumn() throws -> Bool {
+        let statement = try prepare("PRAGMA table_info(failures)")
+        defer { sqlite3_finalize(statement) }
+        while try row(statement) { if text(statement, 1) == "reason" { return true } }
+        return false
     }
 
     private func clearFailure(_ account: String) throws {
