@@ -126,4 +126,6 @@
 "Reading" = "Lettura in corso";
 "idle %@" = "inattivo da %@";
 "No %@ activity for %@" = "Nessuna attività %@ da %@";
-"At this pace, you'll reach your limit on %@" = "A questo ritmo raggiungerai il limite %@";
+"At this pace, you run out on %@" = "A questo ritmo, finisci la quota %@";
+"At this pace, room to spare at the reset" = "A questo ritmo, ti avanza quota al reset";
+"%@, checked %@ ago" = "%@, controllato %@ fa";

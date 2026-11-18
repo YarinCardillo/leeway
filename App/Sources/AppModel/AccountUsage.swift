@@ -35,6 +35,8 @@ public struct AccountUsage: Identifiable, Sendable, Equatable {
     public var isStale = false
     /// True when readings arrive only as the provider records its own work, so a refresh cannot make them newer.
     public var isActivityBased = false
+    /// When Leeway last read this account successfully, whether or not the provider had anything new.
+    public var checkedAt: Date?
     public var error: AccountReadError?
     public var folder: String = ""
     public var aliases: [String] = []

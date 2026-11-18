@@ -387,39 +387,81 @@ extension LocalizationTests {
         XCTAssertEqual(RiskTextColor.readingAge(usage(source: "Claude Code")), .systemOrange)
     }
 
-    func testLimitWarning_OverTargetAccount_NamesWhenTheLimitIsReached() throws {
+    func testPaceLine_ReachesTheLimitBeforeReset_NamesWhenYouRunOut() throws {
         let value = overTarget()
         let date = try XCTUnwrap(value.exhaustsAt)
-        XCTAssertEqual(strings(.english).limitWarning(value, now: fixedNow),
-                       "At this pace, you'll reach your limit on " + strings(.english).date(date))
-        XCTAssertEqual(strings(.italian).limitWarning(value, now: fixedNow),
-                       "A questo ritmo raggiungerai il limite " + strings(.italian).date(date))
+        XCTAssertEqual(strings(.english).paceLine(value, now: fixedNow),
+                       "At this pace, you run out on " + strings(.english).date(date))
+        XCTAssertEqual(strings(.italian).paceLine(value, now: fixedNow),
+                       "A questo ritmo, finisci la quota " + strings(.italian).date(date))
     }
 
-    func testLimitWarning_NoWarningOutsideARealFutureExhaustion() {
-        var onTarget = usage(source: "Claude Code", week: 80, recent: 105)
-        onTarget.exhaustsAt = fixedNow.addingTimeInterval(86400)
-        XCTAssertNil(strings(.english).limitWarning(onTarget, now: fixedNow))
-        XCTAssertNil(strings(.english).limitWarning(overTarget(exhaustsIn: nil), now: fixedNow))
-        XCTAssertNil(strings(.english).limitWarning(overTarget(used: 100), now: fixedNow))
-        XCTAssertNil(strings(.english).limitWarning(overTarget(exhaustsIn: -60), now: fixedNow))
+    func testPaceLine_ForecastStaysUnderTheLimit_SaysThereIsRoomToSpare() {
+        XCTAssertEqual(strings(.english).paceLine(usage(), now: fixedNow), "At this pace, room to spare at the reset")
+        XCTAssertEqual(strings(.italian).paceLine(usage(), now: fixedNow), "A questo ritmo, ti avanza quota al reset")
+        var onTarget = usage(source: "Claude Code", used: 70, week: 85, recent: 90)
+        onTarget.exhaustsAt = nil
+        XCTAssertEqual(strings(.english).paceLine(onTarget, now: fixedNow), "At this pace, room to spare at the reset")
     }
 
-    func testForecastHeadline_OverTargetAccount_AddsWarningAsSecondCaptionLine() throws {
+    func testPaceLine_NoForecastOrNoHonestSentence_ShowsNothing() {
         let text = strings(.english)
-        let lines = try XCTUnwrap(text.forecastHeadline(overTarget(), now: fixedNow)).caption.components(separatedBy: "\n")
-        XCTAssertEqual(lines.count, 2)
-        XCTAssertTrue(lines[0].hasPrefix("at reset "), lines[0])
-        XCTAssertEqual(lines[1], text.limitWarning(overTarget(), now: fixedNow))
+        let withoutForecast = AccountUsage(id: "x", name: "X", source: "Codex", weeklyUsed: 20, fiveHourUsed: nil,
+            reset: nil, fiveHourReset: nil, weekForecast: nil, recentForecast: nil, recordedAt: fixedNow, history: [])
+        XCTAssertNil(text.paceLine(withoutForecast, now: fixedNow))
+        XCTAssertNil(text.paceLine(overTarget(exhaustsIn: nil), now: fixedNow))
+        XCTAssertNil(text.paceLine(overTarget(used: 100), now: fixedNow))
+        XCTAssertNil(text.paceLine(overTarget(exhaustsIn: -60), now: fixedNow))
     }
 
-    func testForecastHeadline_WithoutWarning_KeepsOneCaptionLine() throws {
-        let caption = try XCTUnwrap(strings(.english).forecastHeadline(usage(), now: fixedNow)).caption
+    func testForecastHeadline_AccountWithPaceLine_AddsItAsSecondCaptionLine() throws {
+        let text = strings(.english)
+        for value in [overTarget(), usage()] {
+            let lines = try XCTUnwrap(text.forecastHeadline(value, now: fixedNow)).caption.components(separatedBy: "\n")
+            XCTAssertEqual(lines.count, 2)
+            XCTAssertTrue(lines[0].hasPrefix("at reset "), lines[0])
+            XCTAssertEqual(lines[1], text.paceLine(value, now: fixedNow))
+        }
+    }
+
+    func testForecastHeadline_WithoutPaceLine_KeepsOneCaptionLine() throws {
+        let caption = try XCTUnwrap(strings(.english).forecastHeadline(overTarget(used: 100), now: fixedNow)).caption
         XCTAssertFalse(caption.contains("\n"))
     }
 
-    func testHeadline_OverTargetAccount_SpeaksTheWarning() throws {
-        let warning = try XCTUnwrap(strings(.english).limitWarning(overTarget(), now: fixedNow))
-        XCTAssertTrue(strings(.english).headline(overTarget(), pollingMinutes: 15, now: fixedNow).hasSuffix(". " + warning))
+    func testHeadline_AccountWithPaceLine_SpeaksIt() throws {
+        for value in [overTarget(), usage(source: "Claude Code")] {
+            let line = try XCTUnwrap(strings(.english).paceLine(value, now: fixedNow))
+            XCTAssertTrue(strings(.english).headline(value, pollingMinutes: 15, now: fixedNow).hasSuffix(". " + line))
+        }
+    }
+
+    func testReadingAgeLabel_IdleCodexWithCheck_SaysWhenLeewayLastChecked() {
+        var value = idleCodex()
+        value.checkedAt = fixedNow.addingTimeInterval(-120)
+        XCTAssertEqual(strings(.english).readingAgeLabel(value, pollingMinutes: 15, now: fixedNow),
+                       "No Codex activity for 33m, checked 2m ago")
+        let italian = strings(.italian).readingAgeLabel(value, pollingMinutes: 15, now: fixedNow) ?? ""
+        XCTAssertTrue(italian.hasPrefix("Nessuna attività Codex da "), italian)
+        XCTAssertTrue(italian.contains(", controllato "), italian)
+        XCTAssertTrue(italian.hasSuffix(" fa"), italian)
+    }
+
+    func testReadingAgeLabel_IdleCodexNeverChecked_OmitsTheCheck() {
+        XCTAssertEqual(strings(.english).readingAgeLabel(idleCodex(), pollingMinutes: 15, now: fixedNow),
+                       "No Codex activity for 33m")
+    }
+
+    func testReadingAge_IdleCodexRow_StaysShortWithoutTheCheck() {
+        var value = idleCodex()
+        value.checkedAt = fixedNow.addingTimeInterval(-120)
+        XCTAssertEqual(strings(.english).readingAge(value, pollingMinutes: 15, now: fixedNow), "idle 33m")
+    }
+
+    func testHeadline_IdleCodexWithCheck_SpeaksWhenLeewayLastChecked() {
+        var value = idleCodex()
+        value.checkedAt = fixedNow.addingTimeInterval(-120)
+        XCTAssertTrue(strings(.english).headline(value, pollingMinutes: 15, now: fixedNow)
+            .hasPrefix("No Codex activity for 33m, checked 2m ago. "))
     }
 }

@@ -119,14 +119,17 @@ extension Localizer {
         }
         let value = percent(low) == percent(high) ? percent(high) : "\(number(low))-\(percent(high))"
         let caption = account.reset.map { format("at reset %@", date($0)) } ?? text("at reset")
-        return (value, limitWarning(account, now: now).map { caption + "\n" + $0 } ?? caption)
+        return (value, paceLine(account, now: now).map { caption + "\n" + $0 } ?? caption)
     }
 
-    /// When the recent pace reaches the limit, for an over-target account still below it.
-    func limitWarning(_ account: AccountUsage, now: Date = Date()) -> String? {
-        guard account.status == .over, let used = account.weeklyUsed, used < Self.weeklyLimit,
-              let exhaustsAt = account.exhaustsAt, exhaustsAt > now else { return nil }
-        return format("At this pace, you'll reach your limit on %@", date(exhaustsAt))
+    /// Where the current pace leads: the time the limit is reached, or room to spare at the reset.
+    /// Nil without a forecast, at the limit already, or when the forecast reaches it without a pace to date it.
+    func paceLine(_ account: AccountUsage, now: Date = Date()) -> String? {
+        guard let used = account.weeklyUsed, used < Self.weeklyLimit, let high = account.upperForecast else { return nil }
+        if let exhaustsAt = account.exhaustsAt, exhaustsAt > now {
+            return format("At this pace, you run out on %@", date(exhaustsAt))
+        }
+        return high < Self.weeklyLimit ? text("At this pace, room to spare at the reset") : nil
     }
 
     func targetRange(_ account: AccountUsage) -> String {
@@ -163,7 +166,8 @@ extension Localizer {
 
     func readingAgeLabel(_ account: AccountUsage, pollingMinutes: Int, now: Date = Date()) -> String? {
         if let idle = idleTime(account, pollingMinutes: pollingMinutes, now: now) {
-            return format("No %@ activity for %@", account.source, idle)
+            let activity = format("No %@ activity for %@", account.source, idle)
+            return account.checkedAt.map { format("%@, checked %@ ago", activity, elapsed(since: $0, relativeTo: now)) } ?? activity
         }
         return readingAge(account, pollingMinutes: pollingMinutes, now: now).map { format("Reading is %@", $0) }
     }
@@ -208,7 +212,7 @@ extension Localizer {
                     ?? format("Forecast between %@ and %@", percent(low), percent(high))
             }
         } else { forecast = text("Forecast not available yet") }
-        let sentence = limitWarning(account, now: now).map { "\(forecast). \($0)" } ?? forecast
+        let sentence = paceLine(account, now: now).map { "\(forecast). \($0)" } ?? forecast
         return detailReadingAge(account, pollingMinutes: pollingMinutes, now: now).map { "\($0). \(sentence)" } ?? sentence
     }
 

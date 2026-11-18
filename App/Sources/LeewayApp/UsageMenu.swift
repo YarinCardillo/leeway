@@ -143,7 +143,8 @@ final class UsageMenu: NSObject, NSMenuDelegate {
             (item.view as? AccountMenuRow)?.update(title: item.attributedTitle)
             updateAccessibility(item, account: account)
         }
-        updatedItem?.title = strings.updated(model.accounts.compactMap(\.recordedAt).max(), isRefreshing: model.isRefreshing) ?? ""
+        let lastCheck = model.accounts.filter { $0.recordedAt != nil }.compactMap(\.checkedAt).max()
+        updatedItem?.title = strings.updated(lastCheck, isRefreshing: model.isRefreshing) ?? ""
         updatedItem?.isHidden = updatedItem?.title.isEmpty ?? true
     }
 

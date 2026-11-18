@@ -126,4 +126,6 @@
 "Reading" = "Reading";
 "idle %@" = "idle %@";
 "No %@ activity for %@" = "No %@ activity for %@";
-"At this pace, you'll reach your limit on %@" = "At this pace, you'll reach your limit on %@";
+"At this pace, you run out on %@" = "At this pace, you run out on %@";
+"At this pace, room to spare at the reset" = "At this pace, room to spare at the reset";
+"%@, checked %@ ago" = "%@, checked %@ ago";

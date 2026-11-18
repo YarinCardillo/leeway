@@ -8,6 +8,8 @@ public final class UsageModel {
     public private(set) var preferences: AppPreferences
     public private(set) var isRefreshing = false
     public private(set) var hasRefreshed = false
+    /// When the last successful refresh finished. A failed refresh leaves it unchanged.
+    public private(set) var lastCheckedAt: Date?
     public private(set) var refreshError: String?
     public private(set) var settingsError: String?
     @ObservationIgnored private var rawAccounts: [AccountUsage] = []
@@ -98,6 +100,7 @@ public final class UsageModel {
                 }
             }
             savedPreferences = preferences
+            lastCheckedAt = Date()
             applyPreferences()
             refreshError = nil
         } catch {
@@ -183,8 +186,9 @@ public final class UsageModel {
 
     private func applyPreferences() {
         accounts = rawAccounts.map { account in
-            guard let choice = preferences.accounts[account.id] else { return account }
             var result = account
+            result.checkedAt = lastCheckedAt
+            guard let choice = preferences.accounts[account.id] else { return result }
             result.name = choice.name ?? account.name
             result.targetLow = choice.targetLow
             result.targetHigh = choice.targetHigh
