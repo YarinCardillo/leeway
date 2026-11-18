@@ -308,7 +308,7 @@ last refresh when the validated interval changes, without one-second polling.
 `refresh` and the app's Refresh now explicitly opt in to a probe.
 
 `leeway version [--json]` prints the build's contract without opening the store:
-`{"schema_version":1,"version":"0.1.2","status_schema":5,"accounts_schema":1,"advice_schema":2,"store_schema":2}`.
+`{"schema_version":1,"version":"0.2.0","status_schema":5,"accounts_schema":1,"advice_schema":2,"store_schema":2}`.
 `store_schema` is the layout of `history.sqlite` this build reads and writes (SQLite
 `user_version`). A build whose `store_schema` is older than the file's refuses `status`,
 `refresh`, `headroom`, `advise` and `serve` before touching it, prints
