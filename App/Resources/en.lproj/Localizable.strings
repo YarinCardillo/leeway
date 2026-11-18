@@ -124,3 +124,6 @@
 "Most at risk first" = "Most at risk first";
 "Drag accounts to change their order." = "Drag accounts to change their order.";
 "Reading" = "Reading";
+"idle %@" = "idle %@";
+"No %@ activity for %@" = "No %@ activity for %@";
+"At this pace, you'll reach your limit on %@" = "At this pace, you'll reach your limit on %@";

@@ -112,13 +112,21 @@ extension Localizer {
     }
 
     /// The large number of the detail header and the words under it. Nil without a reading.
-    func forecastHeadline(_ account: AccountUsage) -> (value: String, caption: String)? {
+    func forecastHeadline(_ account: AccountUsage, now: Date = Date()) -> (value: String, caption: String)? {
         guard let used = account.weeklyUsed else { return nil }
         guard let low = account.lowerForecast, let high = account.upperForecast else {
             return (percent(used), text("used so far"))
         }
         let value = percent(low) == percent(high) ? percent(high) : "\(number(low))-\(percent(high))"
-        return (value, account.reset.map { format("at reset %@", date($0)) } ?? text("at reset"))
+        let caption = account.reset.map { format("at reset %@", date($0)) } ?? text("at reset")
+        return (value, limitWarning(account, now: now).map { caption + "\n" + $0 } ?? caption)
+    }
+
+    /// When the recent pace reaches the limit, for an over-target account still below it.
+    func limitWarning(_ account: AccountUsage, now: Date = Date()) -> String? {
+        guard account.status == .over, let used = account.weeklyUsed, used < Self.weeklyLimit,
+              let exhaustsAt = account.exhaustsAt, exhaustsAt > now else { return nil }
+        return format("At this pace, you'll reach your limit on %@", date(exhaustsAt))
     }
 
     func targetRange(_ account: AccountUsage) -> String {
@@ -148,16 +156,36 @@ extension Localizer {
     }
 
     func readingAge(_ account: AccountUsage, pollingMinutes: Int, now: Date = Date()) -> String? {
+        if let idle = idleTime(account, pollingMinutes: pollingMinutes, now: now) { return format("idle %@", idle) }
         guard account.isReadingOld(pollingMinutes: pollingMinutes, now: now) else { return nil }
         return staleNote(account.recordedAt, relativeTo: now)
     }
 
     func readingAgeLabel(_ account: AccountUsage, pollingMinutes: Int, now: Date = Date()) -> String? {
-        readingAge(account, pollingMinutes: pollingMinutes, now: now).map { format("Reading is %@", $0) }
+        if let idle = idleTime(account, pollingMinutes: pollingMinutes, now: now) {
+            return format("No %@ activity for %@", account.source, idle)
+        }
+        return readingAge(account, pollingMinutes: pollingMinutes, now: now).map { format("Reading is %@", $0) }
+    }
+
+    /// The detail panel has room for the full sentence when the age describes provider activity.
+    func detailReadingAge(_ account: AccountUsage, pollingMinutes: Int, now: Date = Date()) -> String? {
+        account.isActivityBased ? readingAgeLabel(account, pollingMinutes: pollingMinutes, now: now)
+            : readingAge(account, pollingMinutes: pollingMinutes, now: now)
     }
 
     func staleNote(_ date: Date?, relativeTo now: Date = Date()) -> String {
         guard let date else { return text("Last reading is out of date") }
+        return format("%@ old", elapsed(since: date, relativeTo: now))
+    }
+
+    private func idleTime(_ account: AccountUsage, pollingMinutes: Int, now: Date) -> String? {
+        guard account.isActivityBased, account.isReadingOld(pollingMinutes: pollingMinutes, now: now),
+              let recordedAt = account.recordedAt else { return nil }
+        return elapsed(since: recordedAt, relativeTo: now)
+    }
+
+    private func elapsed(since date: Date, relativeTo now: Date) -> String {
         let formatter = DateComponentsFormatter()
         var calendar = Calendar(identifier: .gregorian)
         calendar.locale = locale
@@ -165,8 +193,7 @@ extension Localizer {
         formatter.allowedUnits = [.day, .hour, .minute]
         formatter.unitsStyle = .abbreviated
         formatter.maximumUnitCount = 2
-        let duration = formatter.string(from: max(60, now.timeIntervalSince(date))) ?? ""
-        return format("%@ old", duration)
+        return formatter.string(from: max(60, now.timeIntervalSince(date))) ?? ""
     }
 
     func headline(_ account: AccountUsage, pollingMinutes: Int = 15, now: Date = Date()) -> String {
@@ -181,7 +208,8 @@ extension Localizer {
                     ?? format("Forecast between %@ and %@", percent(low), percent(high))
             }
         } else { forecast = text("Forecast not available yet") }
-        return readingAge(account, pollingMinutes: pollingMinutes, now: now).map { "\($0). \(forecast)" } ?? forecast
+        let sentence = limitWarning(account, now: now).map { "\(forecast). \($0)" } ?? forecast
+        return detailReadingAge(account, pollingMinutes: pollingMinutes, now: now).map { "\($0). \(sentence)" } ?? sentence
     }
 
     func menuBarTitle(_ account: AccountUsage) -> String {
@@ -202,6 +230,8 @@ extension Localizer {
             ? String(name.prefix(maximumLength)).trimmingCharacters(in: .whitespacesAndNewlines) + "…" : name
     }
 
+    private static let weeklyLimit = 100.0
+
     private func number(_ value: Double) -> String {
         value.formatted(.number.precision(.fractionLength(0)).locale(locale))
     }
@@ -218,6 +248,11 @@ enum RiskTextColor {
     /// The verdict word and the forecast mark: the accent for room to use, a quiet secondary on target.
     static func verdict(_ status: UsageStatus, severity: RiskSeverity? = nil) -> NSColor {
         status == .onTarget ? .secondaryLabelColor : color(status, severity: severity)
+    }
+
+    /// Amber marks a reading that may be out of date. Provider inactivity is plain information.
+    static func readingAge(_ account: AccountUsage) -> NSColor {
+        account.isActivityBased ? .secondaryLabelColor : .systemOrange
     }
 
     static func color(_ status: UsageStatus, severity: RiskSeverity? = nil) -> NSColor {

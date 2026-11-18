@@ -124,3 +124,6 @@
 "Most at risk first" = "Il più a rischio prima";
 "Drag accounts to change their order." = "Trascina gli account per cambiarne l’ordine.";
 "Reading" = "Lettura in corso";
+"idle %@" = "inattivo da %@";
+"No %@ activity for %@" = "Nessuna attività %@ da %@";
+"At this pace, you'll reach your limit on %@" = "A questo ritmo raggiungerai il limite %@";

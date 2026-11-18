@@ -26,7 +26,7 @@ struct AccountDetail: View {
     }
 
     private func header(_ account: AccountUsage) -> some View {
-        let age = strings.readingAge(account, pollingMinutes: model.preferences.pollingMinutes)
+        let age = strings.detailReadingAge(account, pollingMinutes: model.preferences.pollingMinutes)
         return VStack(alignment: .leading, spacing: 2) {
             Text(account.name).font(.subheadline).foregroundStyle(.secondary)
             if let forecast = strings.forecastHeadline(account) {
@@ -40,7 +40,7 @@ struct AccountDetail: View {
             if let error = strings.detailReadError(account) {
                 Text(error).font(.subheadline).foregroundStyle(.secondary)
             }
-            if let age { Text(age).font(.subheadline).foregroundStyle(.orange) }
+            if let age { Text(age).font(.subheadline).foregroundStyle(Color(nsColor: RiskTextColor.readingAge(account))) }
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(strings.headline(account, pollingMinutes: model.preferences.pollingMinutes))

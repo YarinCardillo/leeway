@@ -102,7 +102,7 @@ Opened by native menu tracking, click, Return or Right Arrow as an NSMenu submen
 
 Width 340 pt, leading padding 16 pt and trailing padding 14 pt. Content, top to bottom:
 
-1. **Forecast headline**, account name above the forecast range in SF Pro Display Light 34 pt, with an 18 pt regular secondary `%` on the same baseline. The verdict sits opposite in words and its semantic color. Below, a 10 pt secondary caption names the reset or shows the chart inspection readout. Without a forecast, show measured usage and `used so far`; without a reading, show the typed reading state. Figures remain tabular. Chosen 2026-11-03. [A5]
+1. **Forecast headline**, account name above the forecast range in SF Pro Display Light 34 pt, with an 18 pt regular secondary `%` on the same baseline. The verdict sits opposite in words and its semantic color. Below, a 10 pt secondary caption names the reset or shows the chart inspection readout. When an over-target account still below the limit will reach it before reset at its recent pace, the caption's second line says when: `At this pace, you'll reach your limit on Thu 2:20 PM`. Without a forecast, show measured usage and `used so far`; without a reading, show the typed reading state. Figures remain tabular. Chosen 2026-11-03. [A5]
 2. **Chart**, native plot with a 170 pt inspection area (below).
 3. **Facts**, Subheadline 11 pt, two columns, labels and values in label colour, 16 pt rows:
 
@@ -156,7 +156,7 @@ Each state is one concrete treatment, not a spinner.
 | **over**, red | Untinted trend-up template | Same verdict words, systemRed |
 | **Loading, first reading** | Symbol only | Name, status word `Reading`, facts line `Reading usage`. The text breathes slowly (opacity 0.55 to 1.0, 1.6 s ease in out). Reduce Motion turns it static |
 | **Loading, refresh** | Unchanged | Rows unchanged, the age line reads `Updating`. Refresh Now dimmed. No row flicker |
-| **Stale** (latest reading failed, last good kept) | Unchanged, computed from the last good reading | Status word unchanged. Reset remains in the right column. Only readings older than twice the polling interval gain a compact amber age after the usage numbers, with a full VoiceOver reading-age label. A failed attempt alone does not add age. Menu timestamps update every 30 seconds while open. |
+| **Stale** (latest reading failed, last good kept) | Unchanged, computed from the last good reading | Status word unchanged. Reset remains in the right column. Only readings older than twice the polling interval gain a compact amber age after the usage numbers, with a full VoiceOver reading-age label. A failed attempt alone does not add age. Menu timestamps update every 30 seconds while open. Codex readings arrive only when Codex works, so past the same threshold the row shows a secondary `idle 33m` and the detail `No Codex activity for 33m`, without amber. |
 | **Error, no reading yet** | Symbol only | Status word `No reading`. Facts line carries the reason, one of: `Claude CLI not found`, `Not signed in, run claude to sign in`, `Timed out`, `Unexpected output` |
 | **No accounts** | Symbol only | A single dimmed item `No accounts found`, a muted second line `Sign in with Claude Code or Codex, then choose Refresh Now`, then `Settings…` and `Quit Leeway`. Refresh Now stays visible and dimmed; Account order remains available [A1] |
 | **All accounts disabled** | Symbol only | Same as No accounts, second line `All accounts are turned off in Settings` |
@@ -273,6 +273,7 @@ Every status is spoken as words, numbers as numbers, never colour names.
 | Menu bar item | `Leeway` | Value: `Work, 62 percent used, forecast 84 percent, on target`. When no data: `No readings` |
 | Account row | `Work, on target` | Value: `62 percent of weekly quota used. Forecast between 84 and 97 percent at reset. Resets Tuesday at 5:00 AM.` Hint: `Opens the weekly chart` |
 | Stale row | as above | Value ends with `Reading is 42 minutes old` |
+| Idle Codex row | as above | Value ends with `No Codex activity for 42 minutes` |
 | Error row | `Work, no reading` | Value: the reason in full, for example `Claude CLI not found` |
 | Age line | `Last updated` | Value: `2 minutes ago` |
 | Chart | `Weekly usage for Work` | Value: the headline sentence. Provides an audio graph descriptor with series Used, Forecast week pace, Forecast last 24 hours, and Target low and Target high as reference lines [A5] [A6] |

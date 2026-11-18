@@ -205,7 +205,7 @@ final class UsageMenu: NSObject, NSMenuDelegate {
             .font: font, .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: paragraph(spacingBefore: Self.lineGap)])
         if let age = strings.readingAge(account, pollingMinutes: model.preferences.pollingMinutes) {
             line.append(NSAttributedString(string: ", " + age, attributes: [
-                .font: font, .foregroundColor: NSColor.systemOrange, .paragraphStyle: paragraph(spacingBefore: Self.lineGap)]))
+                .font: font, .foregroundColor: RiskTextColor.readingAge(account), .paragraphStyle: paragraph(spacingBefore: Self.lineGap)]))
         }
         return line
     }

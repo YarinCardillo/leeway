@@ -17,6 +17,7 @@ public enum CoreSnapshotMapper {
             account.targetHigh = status.targetHigh
             account.exhaustsAt = status.forecast.exhaustsAt
             account.isStale = status.stale
+            account.isActivityBased = status.provider == .codex
             account.error = status.error
             account.folder = status.configDir
             account.aliases = status.aliases

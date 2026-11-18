@@ -33,6 +33,8 @@ public struct AccountUsage: Identifiable, Sendable, Equatable {
     public var exhaustsAt: Date?
     public var isEnabled = true
     public var isStale = false
+    /// True when readings arrive only as the provider records its own work, so a refresh cannot make them newer.
+    public var isActivityBased = false
     public var error: AccountReadError?
     public var folder: String = ""
     public var aliases: [String] = []
