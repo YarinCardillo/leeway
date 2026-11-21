@@ -20,6 +20,10 @@ struct SourceReadings: Sendable {
                 let readings = targets.map { target -> (String, [Snapshot], AccountReadError?) in
                     guard !cancellation.isCancelled else { return (target.id, [], nil) }
                     do {
+                        if target.provider == .grok {
+                            let snapshot = try GrokBotReader.read(home: target.configDir, account: target.id)
+                            return (target.id, snapshot.map { [$0] } ?? [], snapshot == nil ? .invalidOutput : nil)
+                        }
                         if target.provider == .codex {
                             let history = try CodexReader.history(home: target.configDir, account: target.id)
                             return (target.id, history, history.isEmpty ? .invalidOutput : nil)

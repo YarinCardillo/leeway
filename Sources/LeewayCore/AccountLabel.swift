@@ -4,8 +4,8 @@ import Foundation
 public enum AccountLabel {
     /// Returns a provider name with short folder context outside its standard home.
     public static func defaultName(provider: Provider, directory: URL, home: URL = FileManager.default.homeDirectoryForCurrentUser) -> String {
-        let name = provider == .claude ? "Claude" : "Codex"
-        if directory.standardizedFileURL == home.appendingPathComponent(".\(provider.rawValue)").standardizedFileURL { return name }
+        let name = provider == .claude ? "Claude" : provider == .codex ? "Codex" : "Grok Bot"
+        if directory.standardizedFileURL == home.appendingPathComponent(provider.standardFolder).standardizedFileURL { return name }
         if directory.path.contains("/orca/claude-profiles/"), directory.lastPathComponent == "home" {
             return "\(name) (Orca profile)"
         }

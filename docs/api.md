@@ -126,7 +126,7 @@ refresh).
       "properties": {
         "id": {"type": "string", "minLength": 1},
         "label": {"type": "string", "minLength": 1},
-        "provider": {"enum": ["claude", "codex"]},
+        "provider": {"enum": ["claude", "codex", "grok"]},
         "config_dir": {"type": "string"},
         "registered": {"type": "boolean"},
         "aliases": {"type": "array", "items": {"type": "string"}},
@@ -134,7 +134,7 @@ refresh).
         "five_hour": {"$ref": "#/$defs/window"},
         "seven_day": {"$ref": "#/$defs/window"},
         "forecast": {"$ref": "#/$defs/forecast"},
-        "source": {"enum": ["probe", "codex-log", null]},
+        "source": {"enum": ["probe", "codex-log", "grok-cache", null]},
         "stale": {"type": "boolean"},
         "error": {"enum": ["cli_missing", "timeout", "not_signed_in", "invalid_output", "probe_failed", "no_rate_limit_event", null]},
         "as_of": {"$ref": "#/$defs/moment"},
@@ -326,7 +326,7 @@ Quota targets and routing stay in the policy file. Changes take a lock and repla
 app, the CLI and other apps can edit together. A build that finds a newer `schema_version` refuses
 with the exit 3 error above and never rewrites the file; a damaged file is an error, not replaced.
 
-`leeway accounts list|rename <id> <name>|hide <id>|show <id>|remove <id>|add <folder> [--provider claude|codex] [--json]`
+`leeway accounts list|rename <id> <name>|hide <id>|show <id>|remove <id>|add <folder> [--provider claude|codex|grok] [--json]`
 print the updated list. With `--json` it is `{"schema_version":1,"accounts":[{"id","provider","label","origin","hidden","folder_exists","order"}]}`
 in display order. Rows carry no email, no folder path and nothing read from the folder.
 `hide` keeps the row but stops showing and polling the account until `show`. `remove` works for any

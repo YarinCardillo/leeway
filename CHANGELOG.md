@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Grok Bot is a new monitored provider. Leeway reads the weekly usage Grok Bot already caches, without sending a request or opening its secrets, and shows how much of the shared Grok Bot and Cursor allowance is left. Grok Bot accounts are shown only; the advisor never routes agent work to them.
+
 ## 0.2.0
 
 - Several copies of Leeway (the app, the command line, agent hooks) now share one set of readings. Only one of them checks usage at a time, so the others never repeat the work or disagree.

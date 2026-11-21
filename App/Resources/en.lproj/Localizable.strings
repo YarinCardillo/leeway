@@ -33,7 +33,7 @@
 "Reserve account for %@" = "Reserve account for %@";
 "Resets %@" = "Resets %@";
 "Settings…" = "Settings…";
-"Sign in with Claude Code or Codex, then choose Refresh Now" = "Sign in with Claude Code or Codex, then choose Refresh Now";
+"Sign in with Claude Code, Codex or Grok Bot, then choose Refresh Now" = "Sign in with Claude Code, Codex or Grok Bot, then choose Refresh Now";
 "Solid line: measured usage. Dashed lines: forecasts." = "Solid line: measured usage. Dashed lines: forecasts.";
 "System default" = "System default";
 "Unavailable" = "Unavailable";
@@ -47,7 +47,7 @@
 "Forecast, week pace" = "Forecast, week pace";
 "Forecast, last 24 hours" = "Forecast, last 24 hours";
 "%@ used" = "%@ used";
-"No reading yet. Check that Claude Code or Codex is signed in, then choose Refresh Now." = "No reading yet. Check that Claude Code or Codex is signed in, then choose Refresh Now.";
+"No reading yet. Check that Claude Code, Codex or Grok Bot is signed in, then choose Refresh Now." = "No reading yet. Check that Claude Code, Codex or Grok Bot is signed in, then choose Refresh Now.";
 "Reset time unknown" = "Reset time unknown";
 "Last reading is out of date" = "Last reading is out of date";
 "%@ old" = "%@ old";

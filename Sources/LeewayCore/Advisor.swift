@@ -35,8 +35,8 @@ public enum Advisor {
     }
 
     private static func candidates(_ request: AdviceRequest, accounts: [AccountStatus], policy: Policy) -> [AccountStatus] {
-        let agents: [Provider] = request.agent.map { [$0] }
-            ?? ([Role.builder, .reviewer].contains(request.role) ? [.codex, .claude] : [.claude])
+        let agents: [Provider] = (request.agent.map { [$0] }
+            ?? ([Role.builder, .reviewer].contains(request.role) ? [.codex, .claude] : [.claude])).filter(\.isAgent)
         let allowed = policy.allowed(for: request.repo)
         let ordered = agents.flatMap { provider -> [AccountStatus] in
             let mine = accounts.filter { $0.provider == provider }
