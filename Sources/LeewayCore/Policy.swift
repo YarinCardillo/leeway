@@ -1,6 +1,14 @@
 import Foundation
 
-public enum Provider: String, Codable, Sendable { case claude, codex }
+public enum Provider: String, Codable, Sendable {
+    case claude, codex, grok
+
+    /// Whether Leeway can route agent work to this provider. Grok Bot is only monitored.
+    public var isAgent: Bool { self != .grok }
+
+    /// The folder discovery checks first, relative to the user's home.
+    var standardFolder: String { self == .grok ? GrokBotReader.defaultFolder : ".\(rawValue)" }
+}
 public enum Role: String, Codable, Sendable { case builder, reviewer, explorer, planner, evaluator }
 public enum TaskClass: String, Codable, Sendable { case mechanical, integration, design }
 public enum TargetAction: String, Codable, Sendable { case warn, `switch`, block }

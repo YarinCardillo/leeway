@@ -27,6 +27,7 @@ struct AccountsSettings: View {
         )) {
             Button("Claude Code") { addFolder(provider: "claude") }
             Button("Codex") { addFolder(provider: "codex") }
+            Button("Grok Bot") { addFolder(provider: "grok") }
         }
     }
 
