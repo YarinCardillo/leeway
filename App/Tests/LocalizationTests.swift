@@ -79,6 +79,14 @@ extension LocalizationTests {
         }
     }
 
+    func testMenuBarUsageValue_SessionWithoutAWeeklyReading_SpeaksOnlyTheSession() {
+        let now = Date(timeIntervalSince1970: 1804000000), text = strings(.english)
+        let sessionOnly = AccountUsage(id: "work", name: "Work", source: "claude", weeklyUsed: nil, fiveHourUsed: 18,
+            reset: nil, fiveHourReset: now.addingTimeInterval(3600), weekForecast: nil, recentForecast: nil,
+            recordedAt: nil, history: [])
+        XCTAssertEqual(text.menuBarUsageValue(sessionOnly, now: now), "Work, current session 18% used")
+    }
+
     func testMissingReadings_OmitUpdatedAndResetSentences() {
         let text = strings(.english)
         XCTAssertNil(text.updated(nil, isRefreshing: false))

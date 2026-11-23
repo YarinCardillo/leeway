@@ -15,6 +15,7 @@ final class NativeStatusItem {
     private var shownVerdict: UsageStatus?
     /// Redraws the label when the session shown beside the icon resets, since no reading arrives at that moment.
     private var sessionResetTimer: Timer?
+    private var systemObservers: [NSObjectProtocol] = []
 
     init(model: UsageModel, openSettings: @escaping () -> Void) {
         self.model = model
@@ -22,6 +23,7 @@ final class NativeStatusItem {
         menu = UsageMenu(model: model, openSettings: openSettings)
         item.menu = menu.makeMenu()
         observe()
+        observeWakeAndClockChanges()
     }
 
     /// Loads a preserved-vector Phosphor template; AppKit supplies the menu bar foreground.
@@ -105,6 +107,16 @@ final class NativeStatusItem {
         let minutes = model.preferences.pollingMinutes
         return showsUsage ? strings.menuBarUsageValue(account, pollingMinutes: minutes)
             : strings.menuBarValue(account, pollingMinutes: minutes)
+    }
+
+    /// A run-loop timer counts uptime, which stops while the Mac sleeps and ignores clock changes, so the label
+    /// is checked again on wake and when the clock changes.
+    private func observeWakeAndClockChanges() {
+        let redraw: @Sendable (Notification) -> Void = { [weak self] _ in Task { @MainActor in self?.updateButton() } }
+        systemObservers = [
+            NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil,
+                queue: .main, using: redraw),
+            NotificationCenter.default.addObserver(forName: .NSSystemClockDidChange, object: nil, queue: .main, using: redraw)]
     }
 
     private func scheduleSessionReset(_ account: AccountUsage?) {

@@ -231,7 +231,9 @@ extension Localizer {
     func menuBarUsageValue(_ account: AccountUsage, pollingMinutes: Int = 15, now: Date = Date()) -> String {
         let value = menuBarValue(account, pollingMinutes: pollingMinutes, now: now)
         guard let session = account.activeSessionUsed(at: now) else { return value }
-        return value + ", " + format("current session %@ used", percent(session))
+        let spokenSession = format("current session %@ used", percent(session))
+        guard account.weeklyUsed != nil else { return account.name + ", " + spokenSession }
+        return value + ", " + spokenSession
     }
 
     func menuBarValue(_ account: AccountUsage, pollingMinutes: Int = 15, now: Date = Date()) -> String {
