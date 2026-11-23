@@ -56,7 +56,7 @@ struct AccountsSettings: View {
                 Text(strings.text("Target"))
                 Text(strings.text("Your weekly usage at reset"))
             }
-            reservePicker(account)
+            if account.isRoutable { reservePicker(account) }
             removeRow(account)
         } header: {
             VStack(alignment: .leading, spacing: 3) {
@@ -88,7 +88,7 @@ struct AccountsSettings: View {
             set: { model.setReserve($0.isEmpty ? nil : $0, for: account.id) }
         )) {
             Text(strings.text("None")).tag("")
-            ForEach(model.accounts.filter { $0.id != account.id }) { Text($0.name).tag($0.id) }
+            ForEach(account.reserveCandidates(in: model.accounts)) { Text($0.name).tag($0.id) }
         }.pickerStyle(.menu).accessibilityLabel(strings.format("Reserve account for %@", account.name))
     }
 

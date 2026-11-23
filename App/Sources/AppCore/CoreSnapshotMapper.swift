@@ -18,6 +18,7 @@ public enum CoreSnapshotMapper {
             account.exhaustsAt = status.forecast.exhaustsAt
             account.isStale = status.stale
             account.isActivityBased = status.provider != .claude
+            account.isRoutable = status.provider.isAgent
             account.error = status.error
             account.folder = status.configDir
             account.aliases = status.aliases

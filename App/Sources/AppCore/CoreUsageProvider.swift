@@ -226,6 +226,7 @@ public final class CoreUsageProvider: AppModel.UsageProvider {
             fiveHourUsed: nil, reset: nil, fiveHourReset: nil, weekForecast: nil, recentForecast: nil,
             recordedAt: nil, history: [])
         account.defaultName = defaultName
+        account.isRoutable = entry.provider.isAgent
         account.folder = entry.configDir
         account.isStale = true
         account.isFolderMissing = true
@@ -239,6 +240,7 @@ public final class CoreUsageProvider: AppModel.UsageProvider {
             fiveHourUsed: nil, reset: nil, fiveHourReset: nil, weekForecast: nil, recentForecast: nil,
             recordedAt: nil, history: [])
         account.defaultName = AccountLabel.defaultName(provider: configuration.provider, directory: configuration.configDir, home: settings.home)
+        account.isRoutable = configuration.provider.isAgent
         account.folder = configuration.configDir.path
         account.targetLow = configuration.targetLow
         account.targetHigh = configuration.targetHigh
