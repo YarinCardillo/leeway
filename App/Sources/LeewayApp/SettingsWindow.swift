@@ -34,10 +34,22 @@ final class SettingsWindow: NSWindow {
 
     override func sendEvent(_ event: NSEvent) {
         if [.leftMouseDown, .rightMouseDown, .keyDown].contains(event.type) { allowUserFocus() }
+        // The window frame view has no superview, so it hit-tests in window coordinates.
+        if event.type == .leftMouseDown, endsEditing(forClickOn: contentView?.superview?.hitTest(event.locationInWindow)) {
+            _ = makeFirstResponder(nil)
+        }
         super.sendEvent(event)
     }
 
     func allowUserFocus() { isAwaitingUserInput = false }
+
+    /// Whether a click ends the text editing in progress. A click anywhere but on a text input ends it, so the
+    /// caret does not stay in a field the person has left; a click on a text input is left to AppKit.
+    func endsEditing(forClickOn hit: NSView?) -> Bool {
+        guard let editor = firstResponder as? NSTextView, editor.isFieldEditor else { return false }
+        guard let hit else { return true }
+        return !sequence(first: hit, next: \.superview).contains { $0 is NSTextField || $0 is NSTextView }
+    }
 
     private static var displays: [SettingsWindowPlacement.Display] {
         NSScreen.screens.map { SettingsWindowPlacement.Display(frame: $0.frame, visible: $0.visibleFrame) }
