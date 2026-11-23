@@ -52,6 +52,8 @@ public struct AppPreferences: Codable, Sendable {
     public var language = AppLanguage.system
     public var updatesAutomatically = true
     public var isMenuBarCompact = true
+    /// Compact mode only: a percentage beside the icon, the current session's or else the week's.
+    public var showsMenuBarUsage = false
     public var accountOrderMode = AccountOrderMode.mostAtRisk
     public var manualAccountOrder: [String] = []
     public var addedFolders: [String] = []
@@ -61,7 +63,7 @@ public struct AppPreferences: Codable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case accounts, pollingMinutes, language, updatesAutomatically
-        case addedFolders, folderProviders, isMenuBarCompact, accountOrderMode, manualAccountOrder
+        case addedFolders, folderProviders, isMenuBarCompact, showsMenuBarUsage, accountOrderMode, manualAccountOrder
     }
 
     private enum LegacyKeys: String, CodingKey { case pinnedID }
@@ -76,6 +78,7 @@ public struct AppPreferences: Codable, Sendable {
         addedFolders = try values.decode([String].self, forKey: .addedFolders)
         folderProviders = try values.decode([String: String].self, forKey: .folderProviders)
         isMenuBarCompact = try values.decodeIfPresent(Bool.self, forKey: .isMenuBarCompact) ?? true
+        showsMenuBarUsage = try values.decodeIfPresent(Bool.self, forKey: .showsMenuBarUsage) ?? false
         accountOrderMode = try values.decodeIfPresent(AccountOrderMode.self, forKey: .accountOrderMode) ?? .mostAtRisk
         manualAccountOrder = try values.decodeIfPresent([String].self, forKey: .manualAccountOrder) ?? []
         let legacy = try decoder.container(keyedBy: LegacyKeys.self)

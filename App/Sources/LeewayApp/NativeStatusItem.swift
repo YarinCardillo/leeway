@@ -7,6 +7,8 @@ import LeewayCore
 @MainActor
 final class NativeStatusItem {
     private static let crossfadeDuration: CFTimeInterval = 0.2
+    private static let iconSize: CGFloat = 16
+    private static let usageMargin: CGFloat = 2
     private let model: UsageModel
     private let item: NSStatusItem
     private let menu: UsageMenu
@@ -36,7 +38,7 @@ final class NativeStatusItem {
         let source = Bundle.main.image(forResource: name)
         #endif
         guard let image = source?.copy() as? NSImage else { return nil }
-        image.size = NSSize(width: 16, height: 16)
+        image.size = NSSize(width: iconSize, height: iconSize)
         image.isTemplate = true
         return image
     }
@@ -73,6 +75,18 @@ final class NativeStatusItem {
         button.contentTintColor = Self.iconTint(status: account?.status, severity: account?.severity)
         button.imagePosition = .imageOnly
         button.attributedTitle = NSAttributedString(string: "")
+        if model.preferences.isMenuBarCompact, model.preferences.showsMenuBarUsage,
+           let account, let usage = strings.menuBarUsage(account) {
+            let title = NSAttributedString(string: " " + usage, attributes: [
+                .font: NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)])
+            button.imagePosition = .imageLeading
+            button.imageHugsTitle = true
+            button.attributedTitle = title
+            // AppKit pads a title more than an icon; size the item so both sides keep the icon's margin.
+            item.length = ceil(Self.iconSize + title.size().width + 2 * Self.usageMargin)
+        } else {
+            item.length = NSStatusItem.variableLength
+        }
         if !model.preferences.isMenuBarCompact, let account {
             button.image = nil
             button.attributedTitle = NSAttributedString(string: strings.menuBarTitle(account), attributes: [

@@ -222,6 +222,11 @@ extension Localizer {
         return account.upperForecast.map { title + " → " + percent($0) } ?? title
     }
 
+    /// The percentage beside the compact icon: the current session when it has a reading, otherwise the week.
+    func menuBarUsage(_ account: AccountUsage) -> String? {
+        (account.fiveHourUsed ?? account.weeklyUsed).map { percent($0) }
+    }
+
     func menuBarValue(_ account: AccountUsage, pollingMinutes: Int = 15, now: Date = Date()) -> String {
         let value = account.upperForecast.map {
             format("%@, %@ used, forecast %@, %@", account.name, percent(account.weeklyUsed), percent($0), status(account))

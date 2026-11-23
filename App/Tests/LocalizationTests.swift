@@ -45,6 +45,15 @@ extension LocalizationTests {
                      recentForecast: recent, recordedAt: nil, history: [])
     }
 
+    func testMenuBarUsage_PrefersTheSessionAndFallsBackToTheWeek() {
+        let text = strings(.english)
+        XCTAssertEqual(text.menuBarUsage(account(used: 62)), "62%")
+        let session = AccountUsage(id: "work", name: "Work", source: "claude", weeklyUsed: 62, fiveHourUsed: 18,
+                                   reset: nil, fiveHourReset: nil, weekForecast: nil, recentForecast: nil, recordedAt: nil, history: [])
+        XCTAssertEqual(text.menuBarUsage(session), "18%")
+        XCTAssertNil(text.menuBarUsage(account(used: nil)))
+    }
+
     func testMissingReadings_OmitUpdatedAndResetSentences() {
         let text = strings(.english)
         XCTAssertNil(text.updated(nil, isRefreshing: false))
