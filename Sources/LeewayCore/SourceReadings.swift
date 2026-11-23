@@ -21,7 +21,7 @@ struct SourceReadings: Sendable {
                     guard !cancellation.isCancelled else { return (target.id, [], nil) }
                     do {
                         if target.provider == .grok {
-                            let snapshot = try GrokBotReader.read(home: target.configDir, account: target.id)
+                            let snapshot = try GrokBotReader.read(home: target.configDir, account: target.id, now: clock())
                             return (target.id, snapshot.map { [$0] } ?? [], snapshot == nil ? .invalidOutput : nil)
                         }
                         if target.provider == .codex {
