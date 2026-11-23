@@ -28,12 +28,15 @@ public struct AccountEntry: Codable, Equatable, Sendable {
 /// A removed folder stays out of discovery until it is added again. A hidden account stays in the book
 /// but is neither shown nor polled until it is shown again.
 public struct AccountBook: Codable, Equatable, Sendable {
-    /// 2 allows providers beyond Claude and Codex. A build that knows only version 1 refuses the file as newer
-    /// instead of reading it as damaged. Version 1 files are read and written back as version 2.
+    /// The newest layout this build reads. 2 allows providers beyond Claude and Codex.
     public static let currentSchemaVersion = 2
     static let maximumLabelLength = 80
+    private static let version1Providers: Set<Provider> = [.claude, .codex]
 
-    public private(set) var schemaVersion = AccountBook.currentSchemaVersion
+    /// The lowest version that holds these entries. A book with only Claude and Codex stays at 1, so builds that
+    /// know only those keep reading it; one with any other provider is 2, which those builds refuse as newer
+    /// instead of reading it as damaged.
+    public var schemaVersion: Int { accounts.allSatisfy { Self.version1Providers.contains($0.provider) } ? 1 : 2 }
     public private(set) var accounts: [AccountEntry] = []
     public private(set) var removedFolders: [String] = []
     /// True once the Leeway app copied its older preferences into the book, so they are never read again.
@@ -44,12 +47,22 @@ public struct AccountBook: Codable, Equatable, Sendable {
     /// Decodes a book, tolerating files written before `app_preferences_imported` existed.
     public init(from decoder: any Decoder) throws {
         let fields = try decoder.container(keyedBy: CodingKeys.self)
-        // `load` has already refused newer versions; whatever this build writes back is its own version.
+        // `load` has already refused newer versions; the version written back follows the entries.
         _ = try fields.decode(Int.self, forKey: .schemaVersion)
         accounts = try fields.decode([AccountEntry].self, forKey: .accounts)
         removedFolders = try fields.decode([String].self, forKey: .removedFolders)
         appPreferencesImported = try fields.decodeIfPresent(Bool.self, forKey: .appPreferencesImported) ?? false
     }
+
+    public func encode(to encoder: any Encoder) throws {
+        var fields = encoder.container(keyedBy: CodingKeys.self)
+        try fields.encode(schemaVersion, forKey: .schemaVersion)
+        try fields.encode(accounts, forKey: .accounts)
+        try fields.encode(removedFolders, forKey: .removedFolders)
+        try fields.encode(appPreferencesImported, forKey: .appPreferencesImported)
+    }
+
+    private enum CodingKeys: String, CodingKey { case schemaVersion, accounts, removedFolders, appPreferencesImported }
 
     /// Where the book of a home folder lives.
     public static func fileURL(home: URL) -> URL {
