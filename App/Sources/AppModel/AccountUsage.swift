@@ -6,10 +6,13 @@ public struct UsagePoint: Identifiable, Sendable, Equatable {
     public var id: Date { date }
     public let date: Date
     public let used: Double
+    /// True for a point estimated from transcripts before the account's first real reading.
+    public let isEstimated: Bool
 
-    public init(date: Date, used: Double) {
+    public init(date: Date, used: Double, isEstimated: Bool = false) {
         self.date = date
         self.used = used
+        self.isEstimated = isEstimated
     }
 }
 

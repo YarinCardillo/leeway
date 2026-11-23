@@ -42,6 +42,8 @@
 "Updating" = "Updating";
 "Weekly usage for %@" = "Weekly usage for %@";
 "Weekly used" = "Weekly used";
+"Weekly used, estimated" = "Weekly used, estimated";
+"%@, about %@ used, estimated" = "%@, about %@ used, estimated";
 "Five-hour used" = "Five-hour used";
 "Five-hour reset" = "Five-hour reset";
 "Forecast, week pace" = "Forecast, week pace";

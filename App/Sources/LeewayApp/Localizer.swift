@@ -63,7 +63,8 @@ extension Localizer {
 
     func chartReadout(_ point: ChartReadout) -> String {
         let time = point.date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().hour().minute().locale(locale))
-        return point.isForecast ? format("%@, forecast %@ to %@", time, percent(point.lower), percent(point.upper))
+        if point.isForecast { return format("%@, forecast %@ to %@", time, percent(point.lower), percent(point.upper)) }
+        return point.isEstimated ? format("%@, about %@ used, estimated", time, percent(point.lower))
             : format("%@, %@ used", time, percent(point.lower))
     }
 

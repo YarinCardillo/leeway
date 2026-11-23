@@ -30,7 +30,8 @@ struct UsageChartDescriptor: AXChartDescriptorRepresentable {
     private func series(reset: Date) -> [AXDataSeriesDescriptor] {
         let startDate = reset.addingTimeInterval(-7 * 86400)
         let measured = account.chartSeries(from: startDate, to: reset)
-        var result = [makeSeries("Weekly used", points: measured.line)]
+        var result = measured.estimatedLine.isEmpty ? [makeSeries("Weekly used", points: measured.line)]
+            : [makeSeries("Weekly used, estimated", points: measured.estimatedLine), makeSeries("Weekly used", points: measured.realLine)]
         if let current = measured.now {
             if let value = account.weekForecast {
                 result.append(makeSeries("Forecast, week pace", points: [current, UsagePoint(date: reset, used: max(current.used, value))]))

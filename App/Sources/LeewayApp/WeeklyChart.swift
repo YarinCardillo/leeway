@@ -10,7 +10,6 @@ struct WeeklyChart: View {
     private var reset: Date { account.reset ?? Date() }
     private var start: Date { reset.addingTimeInterval(-7 * 86400) }
     private var series: ChartSeries { account.chartSeries(from: start, to: reset) }
-    private var measured: [UsagePoint] { series.measuredLine }
     private var latest: UsagePoint? { series.now }
 
     var body: some View {
@@ -65,14 +64,18 @@ struct WeeklyChart: View {
             }
     }
 
+    /// Points estimated from transcripts before the first real reading are drawn in the secondary colour.
     @ChartContentBuilder
     private var measuredMarks: some ChartContent {
-        ForEach(measured) { point in
-            LineMark(x: .value("Date", point.date), y: .value("Used", point.used), series: .value("Series", "Used"))
-                // Activity-based readings hold their value until the next one, so they are drawn as steps.
-                .interpolationMethod(account.isActivityBased ? .stepEnd : .linear)
-                .foregroundStyle(Color.primary).lineStyle(StrokeStyle(lineWidth: 1.5, lineJoin: .round))
-        }
+        ForEach(series.estimatedLine) { point in usedMark(point, series: "Estimated").foregroundStyle(Color.secondary) }
+        ForEach(series.realLine) { point in usedMark(point, series: "Used").foregroundStyle(Color.primary) }
+    }
+
+    private func usedMark(_ point: UsagePoint, series: String) -> some ChartContent {
+        LineMark(x: .value("Date", point.date), y: .value("Used", point.used), series: .value("Series", series))
+            // Activity-based readings hold their value until the next one, so they are drawn as steps.
+            .interpolationMethod(account.isActivityBased ? .stepEnd : .linear)
+            .lineStyle(StrokeStyle(lineWidth: 1.5, lineJoin: .round))
     }
 
     @ChartContentBuilder
@@ -105,7 +108,8 @@ struct WeeklyChart: View {
             RuleMark(x: .value("Date", readout.date)).foregroundStyle(Color.secondary).lineStyle(StrokeStyle(lineWidth: 1))
             ForEach(Array(Set([readout.lower, readout.upper])), id: \.self) { value in
                 PointMark(x: .value("Date", readout.date), y: .value("Value", value))
-                    .symbolSize(22).foregroundStyle(readout.isForecast ? account.chartTint : Color.primary)
+                    .symbolSize(22).foregroundStyle(readout.isForecast ? account.chartTint
+                        : readout.isEstimated ? Color.secondary : Color.primary)
             }
         }
     }

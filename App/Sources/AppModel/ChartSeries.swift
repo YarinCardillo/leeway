@@ -7,6 +7,18 @@ public struct ChartSeries: Equatable, Sendable {
 
     /// A measured segment needs at least two distinct timestamps. A lone sample is only the now dot.
     public var measuredLine: [UsagePoint] { line.count > 1 ? line : [] }
+
+    /// The estimated start of the measured line, ending on the first real point so the two parts join.
+    public var estimatedLine: [UsagePoint] {
+        guard let firstReal = measuredLine.firstIndex(where: { !$0.isEstimated }) else { return measuredLine }
+        return firstReal == 0 ? [] : Array(measuredLine[...firstReal])
+    }
+
+    /// The measured line from the first real reading on.
+    public var realLine: [UsagePoint] {
+        guard let firstReal = measuredLine.firstIndex(where: { !$0.isEstimated }) else { return [] }
+        return Array(measuredLine[firstReal...])
+    }
 }
 
 extension AccountUsage {

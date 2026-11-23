@@ -6,6 +6,16 @@ public struct ChartReadout: Equatable, Sendable {
     public let lower: Double
     public let upper: Double
     public let isForecast: Bool
+    /// True when the reading comes from a point estimated from transcripts, not from a real reading.
+    public let isEstimated: Bool
+
+    public init(date: Date, lower: Double, upper: Double, isForecast: Bool, isEstimated: Bool = false) {
+        self.date = date
+        self.lower = lower
+        self.upper = upper
+        self.isForecast = isForecast
+        self.isEstimated = isEstimated
+    }
 }
 
 extension AccountUsage {
@@ -30,7 +40,7 @@ extension AccountUsage {
         }
         if isActivityBased { return heldReadout(at: date, line: series.line) }
         guard let point = series.line.min(by: { abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date)) }) else { return nil }
-        return ChartReadout(date: point.date, lower: point.used, upper: point.used, isForecast: false)
+        return ChartReadout(date: point.date, lower: point.used, upper: point.used, isForecast: false, isEstimated: point.isEstimated)
     }
 
     /// Readings that arrive only with activity hold their value until the next one, so the cursor reads the last
@@ -38,9 +48,10 @@ extension AccountUsage {
     private func heldReadout(at date: Date, line: [UsagePoint]) -> ChartReadout? {
         guard let first = line.first else { return nil }
         guard let held = line.last(where: { $0.date <= date }) else {
-            return ChartReadout(date: first.date, lower: first.used, upper: first.used, isForecast: false)
+            return ChartReadout(date: first.date, lower: first.used, upper: first.used, isForecast: false,
+                isEstimated: first.isEstimated)
         }
-        return ChartReadout(date: date, lower: held.used, upper: held.used, isForecast: false)
+        return ChartReadout(date: date, lower: held.used, upper: held.used, isForecast: false, isEstimated: held.isEstimated)
     }
 
     /// Keyboard and accessibility stepping visit measured samples and daily forecast positions.

@@ -465,3 +465,14 @@ extension LocalizationTests {
             .hasPrefix("No Codex activity for 33m, checked 2m ago. "))
     }
 }
+
+extension LocalizationTests {
+    func testChartReadout_EstimatedPointSaysSo() {
+        let date = Date(timeIntervalSince1970: 1804000000)
+        let point = ChartReadout(date: date, lower: 12, upper: 12, isForecast: false, isEstimated: true)
+        XCTAssertTrue(strings(.english).chartReadout(point).contains("estimated"))
+        XCTAssertTrue(strings(.italian).chartReadout(point).contains("stimato"))
+        let real = ChartReadout(date: date, lower: 12, upper: 12, isForecast: false)
+        XCTAssertFalse(strings(.english).chartReadout(real).contains("estimated"))
+    }
+}

@@ -99,3 +99,16 @@ extension ChartInspectionTests {
         for point in value.chartInspectionPoints { XCTAssertEqual(value.chartReadout(at: point.date), point) }
     }
 }
+
+extension ChartInspectionTests {
+    func testReadout_EstimatedSampleIsMarked_RealOneIsNot() throws {
+        var value = account()
+        value = AccountUsage(id: value.id, name: value.name, source: value.source, weeklyUsed: value.weeklyUsed,
+            fiveHourUsed: nil, reset: value.reset, fiveHourReset: nil, weekForecast: value.weekForecast,
+            recentForecast: value.recentForecast, recordedAt: value.recordedAt,
+            history: [UsagePoint(date: start, used: 10, isEstimated: true), UsagePoint(date: start.addingTimeInterval(86400), used: 30)])
+        XCTAssertEqual(try XCTUnwrap(value.chartReadout(at: start)).isEstimated, true)
+        XCTAssertEqual(try XCTUnwrap(value.chartReadout(at: start.addingTimeInterval(86400))).isEstimated, false)
+        XCTAssertEqual(try XCTUnwrap(value.chartReadout(at: start.addingTimeInterval(6 * 86400))).isEstimated, false)
+    }
+}
