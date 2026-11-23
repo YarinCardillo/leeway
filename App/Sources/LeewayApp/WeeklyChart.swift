@@ -69,6 +69,8 @@ struct WeeklyChart: View {
     private var measuredMarks: some ChartContent {
         ForEach(measured) { point in
             LineMark(x: .value("Date", point.date), y: .value("Used", point.used), series: .value("Series", "Used"))
+                // Activity-based readings hold their value until the next one, so they are drawn as steps.
+                .interpolationMethod(account.isActivityBased ? .stepEnd : .linear)
                 .foregroundStyle(Color.primary).lineStyle(StrokeStyle(lineWidth: 1.5, lineJoin: .round))
         }
     }
