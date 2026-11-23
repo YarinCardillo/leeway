@@ -33,7 +33,7 @@
 "Reserve account for %@" = "Account di riserva per %@";
 "Resets %@" = "Reset %@";
 "Settings…" = "Impostazioni…";
-"Sign in with Claude Code or Codex, then choose Refresh Now" = "Accedi con Claude Code o Codex, poi scegli Aggiorna ora";
+"Sign in with Claude Code, Codex or Grok Bot, then choose Refresh Now" = "Accedi con Claude Code, Codex o Grok Bot, poi scegli Aggiorna ora";
 "Solid line: measured usage. Dashed lines: forecasts." = "Linea continua: utilizzo misurato. Linee tratteggiate: previsioni.";
 "System default" = "Predefinita del sistema";
 "Unavailable" = "Non disponibile";
@@ -47,7 +47,7 @@
 "Forecast, week pace" = "Previsione, ritmo della settimana";
 "Forecast, last 24 hours" = "Previsione, ultime 24 ore";
 "%@ used" = "%@ usato";
-"No reading yet. Check that Claude Code or Codex is signed in, then choose Refresh Now." = "Nessuna lettura. Verifica di aver effettuato l’accesso con Claude Code o Codex, poi scegli Aggiorna ora.";
+"No reading yet. Check that Claude Code, Codex or Grok Bot is signed in, then choose Refresh Now." = "Nessuna lettura. Verifica di aver effettuato l’accesso con Claude Code, Codex o Grok Bot, poi scegli Aggiorna ora.";
 "Reset time unknown" = "Orario del reset sconosciuto";
 "Last reading is out of date" = "L’ultima lettura non è aggiornata";
 "%@ old" = "vecchia di %@";
@@ -57,7 +57,7 @@
 "Forecast not available yet" = "Previsione non ancora disponibile";
 "%@, %@ used, forecast %@, %@" = "%@, %@ usato, previsione %@, %@";
 "%@, %@ used, %@" = "%@, %@ usato, %@";
-"Which app does this folder belong to?" = "Questa cartella è di Claude Code o di Codex?";
+"Which app does this folder belong to?" = "A quale app appartiene questa cartella?";
 "Could not refresh. Leeway kept the last reading." = "Aggiornamento non riuscito. Uso l’ultima lettura.";
 "Could not read settings from ~/.config/leeway/policy.toml. Check that the file is readable and valid TOML." = "Impossibile leggere le impostazioni da ~/.config/leeway/policy.toml. Verifica che il file sia leggibile e in formato TOML valido.";
 "Could not save settings to ~/.config/leeway/policy.toml. Check that the file is writable and valid TOML." = "Impossibile salvare le impostazioni in ~/.config/leeway/policy.toml. Verifica che il file sia scrivibile e in formato TOML valido.";

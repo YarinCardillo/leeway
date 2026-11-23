@@ -46,7 +46,7 @@ public actor UsageService: UsageProvider {
         reloadPolicy()
         let targets = try discoveredTargets()
         if refresh { try await refreshOrRequest(targets) }
-        else if refreshTask == nil, !isPollerElsewhere { try await refreshReadings(targets.filter { $0.provider == .codex }) }
+        else if refreshTask == nil, !isPollerElsewhere { try await refreshReadings(targets.filter { $0.provider != .claude }) }
         reloadPolicy()
         return try cachedStatus()
     }
@@ -175,7 +175,7 @@ public actor UsageService: UsageProvider {
     /// Estimates the current week for an account that has never been read, from its own transcripts.
     /// Runs once per account: any earlier real reading under the account or its aliases skips it.
     private func backfillPoints(_ target: Target?, snapshots: [Snapshot]) async throws -> [HistoryPoint] {
-        guard let target, snapshots.count == 1, let anchor = snapshots.first, let weekReset = anchor.sevenDay.resetsAt,
+        guard let target, target.provider != .grok, snapshots.count == 1, let anchor = snapshots.first, let weekReset = anchor.sevenDay.resetsAt,
               anchor.at > weekReset.addingTimeInterval(-Forecaster.week) else { return [] }
         let ids = TargetDiscovery.historyIDs(for: target, home: home, accounts: policy.accounts)
         guard try ids.allSatisfy({ try !store.hasReadings($0) }) else { return [] }
@@ -208,7 +208,7 @@ public actor UsageService: UsageProvider {
         }.map { $0.configDir.path }
         return AccountStatus(id: target.id, label: target.label, provider: target.provider, configDir: target.configDir.path,
             registered: target.registered, aliases: aliases, plan: snapshot?.plan, fiveHour: five, sevenDay: week, forecast: forecast,
-            source: snapshot == nil ? nil : (target.provider == .claude ? "probe" : "codex-log"),
+            source: snapshot.map { _ in target.provider == .claude ? "probe" : target.provider == .codex ? "codex-log" : "grok-cache" },
             stale: snapshot == nil || old || failed || incomplete || error != nil, error: error, asOf: snapshot?.at,
             targetLow: configuration?.targetLow ?? 75, targetHigh: configuration?.targetHigh ?? 100)
     }

@@ -43,8 +43,17 @@ public struct AccountUsage: Identifiable, Sendable, Equatable {
     public var defaultName: String?
     /// True when the account's folder no longer exists, so no reading can ever arrive.
     public var isFolderMissing = false
+    /// False for an account Leeway only monitors: the advisor never routes work to it.
+    public var isRoutable = true
 
     public var hasDefaultName: Bool { name == defaultName }
+
+    /// The accounts this one may fall back to when it is over its target: the other accounts the advisor can
+    /// route work to. None for an account Leeway only monitors.
+    public func reserveCandidates(in accounts: [AccountUsage]) -> [AccountUsage] {
+        guard isRoutable else { return [] }
+        return accounts.filter { $0.id != id && $0.isRoutable }
+    }
 
     /// The five-hour usage while its window is still open. Nil without a reading or once the window has reset,
     /// because a cached value outlives its window until the next reading replaces it.

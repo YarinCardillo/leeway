@@ -63,7 +63,7 @@ public struct AccountsCommand: Sendable {
     public func current() throws -> AccountBook { try reconciled(file.load()) }
 
     private static let usage = CoreError.invalidRequest(
-        "usage: accounts list|rename ID NAME|hide ID|show ID|remove ID|add FOLDER [--provider claude|codex] [--json]")
+        "usage: accounts list|rename ID NAME|hide ID|show ID|remove ID|add FOLDER [--provider claude|codex|grok] [--json]")
 
     private var file: AccountBookFile { AccountBookFile(url: AccountBook.fileURL(home: home)) }
 
@@ -113,7 +113,7 @@ private struct Input {
                 continue
             }
             guard index < arguments.count, let value = Provider(rawValue: arguments[index]) else {
-                throw CoreError.invalidRequest("--provider must be claude or codex")
+                throw CoreError.invalidRequest("--provider must be claude, codex or grok")
             }
             provider = value
             index += 1

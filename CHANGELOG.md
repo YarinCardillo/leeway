@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Grok Bot is a new monitored provider. Leeway reads the weekly usage Grok Bot already caches, without sending a request or opening its secrets, and shows how much of the shared Grok Bot and Cursor allowance is left. Grok Bot accounts are shown only; the advisor never routes agent work to them.
 - In Compact mode, the menu bar can show a usage percentage beside the icon: the current session while it is open, otherwise the week. Turn it on in Settings, General.
 
 ## 0.2.0
