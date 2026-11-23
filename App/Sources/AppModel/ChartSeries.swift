@@ -7,6 +7,18 @@ public struct ChartSeries: Equatable, Sendable {
 
     /// A measured segment needs at least two distinct timestamps. A lone sample is only the now dot.
     public var measuredLine: [UsagePoint] { line.count > 1 ? line : [] }
+
+    /// The estimated start of the measured line, ending on the first real point so the two parts join.
+    public var estimatedLine: [UsagePoint] {
+        guard let firstReal = measuredLine.firstIndex(where: { !$0.isEstimated }) else { return measuredLine }
+        return firstReal == 0 ? [] : Array(measuredLine[...firstReal])
+    }
+
+    /// The measured line from the first real reading on.
+    public var realLine: [UsagePoint] {
+        guard let firstReal = measuredLine.firstIndex(where: { !$0.isEstimated }) else { return [] }
+        return Array(measuredLine[firstReal...])
+    }
 }
 
 extension AccountUsage {
@@ -14,8 +26,16 @@ extension AccountUsage {
     ///
     /// The live reading and the stored history come from two sources; drawing them separately put the
     /// "now" dot off the line whenever one was newer. The newest of the two is the anchor for the line,
-    /// the dot and the projections.
-    public func chartSeries(from start: Date, to end: Date) -> ChartSeries {
+    /// the dot and the projections. Activity-based usage does not change without activity, so its last
+    /// reading is held up to `now`, and the projections start there.
+    public func chartSeries(from start: Date, to end: Date, now: Date = Date()) -> ChartSeries {
+        let measured = measuredSeries(from: start, to: end)
+        guard isActivityBased, let last = measured.line.last, now > last.date, now <= end else { return measured }
+        let held = UsagePoint(date: now, used: last.used, isEstimated: last.isEstimated)
+        return ChartSeries(line: measured.line + [held], now: held)
+    }
+
+    private func measuredSeries(from start: Date, to end: Date) -> ChartSeries {
         let sorted = history.filter { $0.date >= start && $0.date <= end }.sorted { $0.date < $1.date }
         var inWeek: [UsagePoint] = []
         for point in sorted {

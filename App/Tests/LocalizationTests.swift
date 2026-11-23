@@ -67,6 +67,26 @@ extension LocalizationTests {
         XCTAssertEqual(text.menuBarUsage(session(used: 98, resetIn: -60, now: now), now: now), "62%")
     }
 
+    func testMenuBarUsage_ExpiredSessionAndWeek_ShowNothing() {
+        let text = strings(.english), now = Date(timeIntervalSince1970: 1804000000)
+        let stale = AccountUsage(id: "work", name: "Work", source: "claude", weeklyUsed: 62, fiveHourUsed: 98,
+            reset: now.addingTimeInterval(-60), fiveHourReset: now.addingTimeInterval(-60), weekForecast: nil,
+            recentForecast: nil, recordedAt: nil, history: [])
+        XCTAssertNil(text.menuBarUsage(stale, now: now))
+    }
+
+    func testNextLabelChange_IsTheEarliestResetStillAhead() {
+        let now = Date(timeIntervalSince1970: 1804000000)
+        func usage(session: TimeInterval, week: TimeInterval) -> AccountUsage {
+            AccountUsage(id: "work", name: "Work", source: "claude", weeklyUsed: 62, fiveHourUsed: 18,
+                reset: now.addingTimeInterval(week), fiveHourReset: now.addingTimeInterval(session), weekForecast: nil,
+                recentForecast: nil, recordedAt: nil, history: [])
+        }
+        XCTAssertEqual(usage(session: 60, week: 3600).nextLabelChange(after: now), now.addingTimeInterval(60))
+        XCTAssertEqual(usage(session: -60, week: 3600).nextLabelChange(after: now), now.addingTimeInterval(3600))
+        XCTAssertNil(usage(session: -60, week: -60).nextLabelChange(after: now))
+    }
+
     func testMenuBarUsageValue_SpeaksTheSessionShownBesideTheIcon() {
         let now = Date(timeIntervalSince1970: 1804000000)
         let active = session(used: 18, resetIn: 3600, now: now), expired = session(used: 18, resetIn: -60, now: now)
@@ -505,5 +525,16 @@ extension LocalizationTests {
         value.checkedAt = fixedNow.addingTimeInterval(-120)
         XCTAssertTrue(strings(.english).headline(value, pollingMinutes: 15, now: fixedNow)
             .hasPrefix("No Codex activity for 33m, checked 2m ago. "))
+    }
+}
+
+extension LocalizationTests {
+    func testChartReadout_EstimatedPointSaysSo() {
+        let date = Date(timeIntervalSince1970: 1804000000)
+        let point = ChartReadout(date: date, lower: 12, upper: 12, isForecast: false, isEstimated: true)
+        XCTAssertTrue(strings(.english).chartReadout(point).contains("estimated"))
+        XCTAssertTrue(strings(.italian).chartReadout(point).contains("stimato"))
+        let real = ChartReadout(date: date, lower: 12, upper: 12, isForecast: false)
+        XCTAssertFalse(strings(.english).chartReadout(real).contains("estimated"))
     }
 }

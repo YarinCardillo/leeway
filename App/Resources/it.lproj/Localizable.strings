@@ -42,6 +42,8 @@
 "Updating" = "Aggiornamento in corso";
 "Weekly usage for %@" = "Utilizzo settimanale di %@";
 "Weekly used" = "Utilizzo settimanale";
+"Weekly used, estimated" = "Utilizzo settimanale, stimato";
+"%@, about %@ used, estimated" = "%@, circa %@ usato, stimato";
 "Five-hour used" = "Utilizzo nelle 5 ore";
 "Five-hour reset" = "Reset nelle 5 ore";
 "Forecast, week pace" = "Previsione, ritmo della settimana";

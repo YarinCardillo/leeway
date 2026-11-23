@@ -3,7 +3,7 @@ import Foundation
 /// The release version of this build. `App/Version.xcconfig` is the source of truth;
 /// a test keeps the two equal.
 public enum LeewayVersion {
-    public static let current = "0.2.0"
+    public static let current = "0.3.0"
 }
 
 /// What `leeway version --json` prints: enough for an app that bundles the helper to pick

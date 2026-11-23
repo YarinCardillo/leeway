@@ -6,10 +6,13 @@ public struct UsagePoint: Identifiable, Sendable, Equatable {
     public var id: Date { date }
     public let date: Date
     public let used: Double
+    /// True for a point estimated from transcripts before the account's first real reading.
+    public let isEstimated: Bool
 
-    public init(date: Date, used: Double) {
+    public init(date: Date, used: Double, isEstimated: Bool = false) {
         self.date = date
         self.used = used
+        self.isEstimated = isEstimated
     }
 }
 
@@ -61,6 +64,19 @@ public struct AccountUsage: Identifiable, Sendable, Equatable {
         guard let fiveHourUsed else { return nil }
         guard let fiveHourReset else { return fiveHourUsed }
         return fiveHourReset > now ? fiveHourUsed : nil
+    }
+
+    /// The weekly usage while its window is still open, for the same reason as `activeSessionUsed`.
+    public func activeWeekUsed(at now: Date = Date()) -> Double? {
+        guard let weeklyUsed else { return nil }
+        guard let reset else { return weeklyUsed }
+        return reset > now ? weeklyUsed : nil
+    }
+
+    /// The next time a window shown from a cached reading resets, when its label must change without a reading.
+    public func nextLabelChange(after now: Date = Date()) -> Date? {
+        [activeSessionUsed(at: now).flatMap { _ in fiveHourReset }, activeWeekUsed(at: now).flatMap { _ in reset }]
+            .compactMap { $0 }.min()
     }
 
     /// A failed attempt does not make a recent successful reading old.

@@ -63,7 +63,8 @@ extension Localizer {
 
     func chartReadout(_ point: ChartReadout) -> String {
         let time = point.date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().hour().minute().locale(locale))
-        return point.isForecast ? format("%@, forecast %@ to %@", time, percent(point.lower), percent(point.upper))
+        if point.isForecast { return format("%@, forecast %@ to %@", time, percent(point.lower), percent(point.upper)) }
+        return point.isEstimated ? format("%@, about %@ used, estimated", time, percent(point.lower))
             : format("%@, %@ used", time, percent(point.lower))
     }
 
@@ -222,9 +223,10 @@ extension Localizer {
         return account.upperForecast.map { title + " → " + percent($0) } ?? title
     }
 
-    /// The percentage beside the compact icon: the current session while its window is open, otherwise the week.
+    /// The percentage beside the compact icon: the current session while its window is open, otherwise the week
+    /// while its window is open, otherwise nothing until the next reading.
     func menuBarUsage(_ account: AccountUsage, now: Date = Date()) -> String? {
-        (account.activeSessionUsed(at: now) ?? account.weeklyUsed).map { percent($0) }
+        (account.activeSessionUsed(at: now) ?? account.activeWeekUsed(at: now)).map { percent($0) }
     }
 
     /// The spoken value while the percentage is beside the icon: it names the session when that is the number shown.

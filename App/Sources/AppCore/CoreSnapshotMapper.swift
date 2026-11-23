@@ -11,7 +11,7 @@ public enum CoreSnapshotMapper {
                 weeklyUsed: status.sevenDay.pct, fiveHourUsed: status.fiveHour.pct,
                 reset: status.sevenDay.resetsAt, fiveHourReset: status.fiveHour.resetsAt,
                 weekForecast: status.forecast.averagePctAtReset, recentForecast: status.forecast.recentPctAtReset,
-                recordedAt: status.asOf, history: (document.history[status.id] ?? []).map { UsagePoint(date: $0.at, used: $0.pct) })
+                recordedAt: status.asOf, history: (document.history[status.id] ?? []).map { UsagePoint(date: $0.at, used: $0.pct, isEstimated: $0.estimated) })
             account.defaultName = AccountLabel.defaultName(provider: status.provider, directory: URL(fileURLWithPath: status.configDir), home: home)
             account.targetLow = status.targetLow
             account.targetHigh = status.targetHigh

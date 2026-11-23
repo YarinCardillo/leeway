@@ -208,6 +208,16 @@ final class ActivityBasedReadingTests: XCTestCase {
     }
 }
 
+final class EstimatedHistoryMappingTests: XCTestCase {
+    func testAdapter_KeepsTheEstimatedMarkOnHistory() {
+        let now = Date(timeIntervalSince1970: 1800000000)
+        let points = [HistoryPoint(at: now.addingTimeInterval(-3600), pct: 10, estimated: true), HistoryPoint(at: now, pct: 30)]
+        let status = AccountStatus(id: "one", label: "One", provider: .claude, configDir: "/fixture/.claude")
+        let result = CoreSnapshotMapper.map(StatusDocument(generatedAt: now, accounts: [status], history: ["one": points]))[0]
+        XCTAssertEqual(result.history.map(\.isEstimated), [true, false])
+    }
+}
+
 final class MonitoredOnlyAccountTests: XCTestCase {
     func testAdapter_GrokBotIsNotRoutable_AgentsAre() {
         let grok = AccountStatus(id: "grok", label: "Grok Bot", provider: .grok, configDir: "/fixture/grok")

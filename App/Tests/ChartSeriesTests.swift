@@ -65,3 +65,19 @@ extension ChartSeriesTests {
         XCTAssertEqual(series.measuredLine, [])
     }
 }
+
+extension ChartSeriesTests {
+    func testChartSeries_EstimatedStart_JoinsTheFirstRealPoint() {
+        let estimated = [UsagePoint(date: start.addingTimeInterval(3600), used: 5, isEstimated: true),
+                         UsagePoint(date: start.addingTimeInterval(7200), used: 12, isEstimated: true)]
+        let series = account(history: estimated + [at(3, 20)], reading: at(4, 30)).chartSeries(from: start, to: end)
+        XCTAssertEqual(series.estimatedLine.map(\.used), [5, 12, 20])
+        XCTAssertEqual(series.realLine.map(\.used), [20, 30])
+    }
+
+    func testChartSeries_NoEstimates_HasOnlyTheRealLine() {
+        let series = account(history: [at(1, 10)], reading: at(2, 20)).chartSeries(from: start, to: end)
+        XCTAssertEqual(series.estimatedLine, [])
+        XCTAssertEqual(series.realLine, series.measuredLine)
+    }
+}

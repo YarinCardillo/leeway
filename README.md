@@ -77,7 +77,7 @@ ln -s /Applications/Leeway.app/Contents/Helpers/leeway ~/.local/bin/leeway
 ## How it reads your quota
 
 Leeway finds the default `~/.claude` and `~/.codex` folders, Grok Bot's data
-folder and managed Claude profiles. Add other folders, rename accounts, or hide them in Settings.
+folder once Grok Bot has cached a usage reading, and managed Claude profiles. Add other folders, rename accounts, or hide them in Settings.
 
 - Claude: a minimal request through the official `claude` CLI (Haiku, no
   tools, no saved session) returns the current rate limits. Each reading

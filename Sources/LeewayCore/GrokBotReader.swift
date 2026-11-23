@@ -25,6 +25,14 @@ public enum GrokBotReader {
             .max { $0.at < $1.at }
     }
 
+    /// Whether Grok Bot has cached a weekly usage reading in `home`, judged from the slice names alone. Discovery
+    /// waits for this, so an installed but signed-out Grok Bot does not add an account that can never be read.
+    static func hasUsageCache(home: URL) -> Bool {
+        let files = (try? FileManager.default.contentsOfDirectory(at: home.appendingPathComponent(persistence),
+            includingPropertiesForKeys: nil)) ?? []
+        return files.contains { $0.pathExtension == "blob" && key($0)?.hasSuffix(cacheSuffix) == true }
+    }
+
     /// The bytes of a regular file of at most `maxBytes`. The checks run on the opened descriptor, so a symlink,
     /// a FIFO, or a file replaced or grown after the listing is never read past the limit.
     static func contents(_ file: URL) -> Data? {
