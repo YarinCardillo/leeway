@@ -245,7 +245,7 @@ final class UsageMenu: NSObject, NSMenuDelegate {
         item.isEnabled = false
         menu.addItem(item)
         if model.hasRefreshed {
-            let key = model.accounts.isEmpty ? "Sign in with Claude Code or Codex, then choose Refresh Now" : "All accounts are turned off in Settings"
+            let key = model.accounts.isEmpty ? "Sign in with Claude Code, Codex or Grok Bot, then choose Refresh Now" : "All accounts are turned off in Settings"
             let hint = NSMenuItem(title: strings.text(key), action: nil, keyEquivalent: "")
             hint.isEnabled = false
             menu.addItem(hint)

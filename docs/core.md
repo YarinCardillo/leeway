@@ -14,7 +14,8 @@ swift build -c release
 The optional user policy is `~/.config/leeway/policy.toml`. No policy means
 all discovered enabled accounts may serve every repository. Account names
 come from `label`, never account emails. Discovery checks the default
-`.claude` and `.codex` directories, added policy directories, the active
+`.claude` and `.codex` directories, Grok Bot's data folder
+(`~/Library/Application Support/Grok Bot`), added policy directories, the active
 `CLAUDE_CONFIG_DIR` and `CODEX_HOME`, and managed Claude profiles described
 in the spec. It checks file structure without opening credential files.
 
@@ -100,7 +101,8 @@ leeway serve
 
 `refresh` opts into official Claude requests. `status`, `headroom`, and
 `advise` never probe Claude. Codex limit records are read only, from at most
-six recent rollout tails of 512 KiB each. `serve` refreshes immediately and
+six recent rollout tails of 512 KiB each. Grok Bot readings come from its
+cached weekly usage slice only, at most 64 KiB, and fill only the weekly window. `serve` refreshes immediately and
 at the configured interval, and exposes the [v1 JSON API](api.md).
 `--home` and `--policy` may appear before or after the command. An alternate
 home changes defaults, policy lookup, discovery root, and database path;
@@ -111,7 +113,7 @@ SQLite history lives at
 idempotent per source account and timestamp. A source failure retains the
 last successful observation and persists stale state. The next successful
 reading clears it. Missing or expired windows are null. Claude readings
-older than the polling interval are stale; Codex log readings retain their
+older than the polling interval are stale; Codex log and Grok Bot cache readings retain their
 source time and are not stale merely because no new request has been made.
 
 The database carries its layout in SQLite's `user_version` (`SnapshotStore.schemaVersion`,

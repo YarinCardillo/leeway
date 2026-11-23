@@ -70,7 +70,7 @@ extension Localizer {
 
     func refreshFailure(hasReading: Bool) -> String {
         text(hasReading ? "Could not refresh. Leeway kept the last reading."
-             : "No reading yet. Check that Claude Code or Codex is signed in, then choose Refresh Now.")
+             : "No reading yet. Check that Claude Code, Codex or Grok Bot is signed in, then choose Refresh Now.")
     }
 
     func updated(_ date: Date?, isRefreshing: Bool) -> String? {
@@ -89,7 +89,7 @@ extension Localizer {
     func usageFacts(_ account: AccountUsage) -> String {
         guard let used = account.weeklyUsed else {
             if account.isFolderMissing { return text("Folder not found. Remove this account in Settings.") }
-            return readError(account) ?? text("No reading yet. Check that Claude Code or Codex is signed in, then choose Refresh Now.")
+            return readError(account) ?? text("No reading yet. Check that Claude Code, Codex or Grok Bot is signed in, then choose Refresh Now.")
         }
         let target = targetRange(account)
         guard let low = account.lowerForecast, let high = account.upperForecast else {

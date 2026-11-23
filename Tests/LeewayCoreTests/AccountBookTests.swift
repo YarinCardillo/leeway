@@ -113,7 +113,7 @@ private func discovered(_ home: URL) throws -> [Target] {
     #expect(!siblings.contains { $0.hasPrefix(".leeway-") })
     var raw = try #require(jsonObject(Data(contentsOf: url)))
     #expect(raw["schema_version"] as? Int == 1)
-    raw["schema_version"] = 2
+    raw["schema_version"] = AccountBook.currentSchemaVersion + 1
     try JSONSerialization.data(withJSONObject: raw).write(to: url)
     #expect { try AccountBook.load(url) } throws: { isStoreNewer($0) }
     #expect { try command(home).run(["list"]) } throws: { isStoreNewer($0) }
@@ -220,4 +220,23 @@ private func discovered(_ home: URL) throws -> [Target] {
     let list = try rows(command(home).run(["list", "--json"]))
     #expect(list.first { $0["id"] as? String == "codex-default" }?["folder_exists"] as? Bool == false)
     #expect(try await service.status().accounts.map(\.id) == ["claude-default"])
+}
+
+@Test func bookFileStaysVersion1UntilItHoldsAProviderVersion1CannotRead() throws {
+    let home = try makeHome()
+    defer { try? FileManager.default.removeItem(at: home) }
+    let url = AccountBook.fileURL(home: home)
+    try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+    let claude = home.appendingPathComponent(".claude").path
+    try Data(#"{"schema_version":1,"accounts":[{"id":"claude-default","provider":"claude","label":"Work","config_dir":"\#(claude)","origin":"discovered","hidden":false,"order":0}],"removed_folders":[]}"#.utf8).write(to: url)
+    #expect(try AccountBook.load(url).accounts.map(\.label) == ["Work"])
+    _ = try command(home).run(["hide", "claude-default"])
+    var raw = try #require(jsonObject(Data(contentsOf: url)))
+    #expect(raw["schema_version"] as? Int == 1)
+    #expect(try AccountBook.load(url).accounts.first { $0.id == "claude-default" }?.label == "Work")
+    let grok = home.appendingPathComponent("grok")
+    try FileManager.default.createDirectory(at: grok, withIntermediateDirectories: true)
+    _ = try command(home).run(["add", grok.path, "--provider", "grok"])
+    raw = try #require(jsonObject(Data(contentsOf: url)))
+    #expect(raw["schema_version"] as? Int == 2)
 }

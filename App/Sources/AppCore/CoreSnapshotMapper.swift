@@ -7,7 +7,7 @@ public enum CoreSnapshotMapper {
     public static func map(_ document: StatusDocument, home: URL = FileManager.default.homeDirectoryForCurrentUser) -> [AccountUsage] {
         document.accounts.map { status in
             var account = AccountUsage(id: status.id, name: status.label,
-                source: status.provider == .claude ? "Claude Code" : "Codex",
+                source: status.provider.sourceName,
                 weeklyUsed: status.sevenDay.pct, fiveHourUsed: status.fiveHour.pct,
                 reset: status.sevenDay.resetsAt, fiveHourReset: status.fiveHour.resetsAt,
                 weekForecast: status.forecast.averagePctAtReset, recentForecast: status.forecast.recentPctAtReset,
@@ -17,7 +17,8 @@ public enum CoreSnapshotMapper {
             account.targetHigh = status.targetHigh
             account.exhaustsAt = status.forecast.exhaustsAt
             account.isStale = status.stale
-            account.isActivityBased = status.provider == .codex
+            account.isActivityBased = status.provider != .claude
+            account.isRoutable = status.provider.isAgent
             account.error = status.error
             account.folder = status.configDir
             account.aliases = status.aliases

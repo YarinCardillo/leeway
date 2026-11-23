@@ -217,3 +217,25 @@ final class EstimatedHistoryMappingTests: XCTestCase {
         XCTAssertEqual(result.history.map(\.isEstimated), [true, false])
     }
 }
+
+final class MonitoredOnlyAccountTests: XCTestCase {
+    func testAdapter_GrokBotIsNotRoutable_AgentsAre() {
+        let grok = AccountStatus(id: "grok", label: "Grok Bot", provider: .grok, configDir: "/fixture/grok")
+        let codex = AccountStatus(id: "codex", label: "Codex", provider: .codex, configDir: "/fixture/.codex")
+        let accounts = CoreSnapshotMapper.map(StatusDocument(generatedAt: Date(), accounts: [grok, codex]))
+        XCTAssertFalse(accounts[0].isRoutable)
+        XCTAssertTrue(accounts[1].isRoutable)
+    }
+
+    func testReserveCandidates_OnlyOtherRoutableAccounts_NoneForAMonitoredOne() {
+        func usage(_ id: String, routable: Bool) -> AccountUsage {
+            var account = AccountUsage(id: id, name: id, source: "", weeklyUsed: nil, fiveHourUsed: nil, reset: nil,
+                fiveHourReset: nil, weekForecast: nil, recentForecast: nil, recordedAt: nil, history: [])
+            account.isRoutable = routable
+            return account
+        }
+        let accounts = [usage("claude", routable: true), usage("codex", routable: true), usage("grok", routable: false)]
+        XCTAssertEqual(accounts[0].reserveCandidates(in: accounts).map(\.id), ["codex"])
+        XCTAssertEqual(accounts[2].reserveCandidates(in: accounts).map(\.id), [])
+    }
+}
