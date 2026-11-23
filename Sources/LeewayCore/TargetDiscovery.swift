@@ -78,7 +78,7 @@ public enum TargetDiscovery {
             (.claude, home.appendingPathComponent(".claude"), "claude-default"),
             (.codex, home.appendingPathComponent(".codex"), "codex-default")]
         let grok = home.appendingPathComponent(GrokBotReader.defaultFolder)
-        if GrokBotReader.hasUsageCache(home: grok) { directories.append((.grok, grok, "grok-default")) }
+        if GrokBotReader.hasUsageReading(home: grok) { directories.append((.grok, grok, "grok-default")) }
         directories += try profiles(home).map { (.claude, $0, nil) }
         for (provider, variable) in [(Provider.claude, "CLAUDE_CONFIG_DIR"), (.codex, "CODEX_HOME")] {
             if let value = environment[variable], !value.isEmpty { directories.append((provider, expand(value, home: home), nil)) }

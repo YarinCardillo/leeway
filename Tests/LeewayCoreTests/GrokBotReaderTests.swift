@@ -76,6 +76,10 @@ private func persistence(_ home: URL) throws -> URL {
     let folder = home.appendingPathComponent(GrokBotReader.defaultFolder)
     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
     #expect(try TargetDiscovery.discover(home: home, accounts: [], environment: [:]).isEmpty)
+    // A free plan caches the slice with no reading in it.
+    let slice = try persistence(folder).appendingPathComponent(sliceName("sand.client.slice.account.a.weekly-usage.cache"))
+    try #"{"schemaVersion":3,"value":{"kind":"absent"}}"#.write(to: slice, atomically: true, encoding: .utf8)
+    #expect(try TargetDiscovery.discover(home: home, accounts: [], environment: [:]).isEmpty)
     try usageCache().write(to: try persistence(folder).appendingPathComponent(sliceName("sand.client.slice.account.a.weekly-usage.cache")),
         atomically: true, encoding: .utf8)
     let found = try TargetDiscovery.discover(home: home, accounts: [], environment: [:])
