@@ -30,7 +30,7 @@ Source: six Mobbin references inspected locally. Images remain outside the repos
 
 ## Menu bar title
 
-Compact is the default: a 16 pt Phosphor bold vector template icon, with no text: trend-down for under, target for on target, trend-up for over. Every glyph remains an untinted template. macOS supplies the foreground, including white against a dark menu bar. Since 2026-11-03 this replaces verdict tinting in compact mode. General offers Menu bar: Compact / Percentages. Percentages mode uses the text treatment below. VoiceOver retains the full account reading in both modes.
+Compact is the default: a 16 pt Phosphor bold vector template icon, with no text: trend-down for under, target for on target, trend-up for over. Every glyph remains an untinted template. macOS supplies the foreground, including white against a dark menu bar. Since 2026-11-03 this replaces verdict tinting in compact mode. General offers Menu bar: Compact / Percentages. Percentages mode uses the text treatment below. In Compact, Show usage beside the icon (off by default) adds the first account's percentage after the icon, in the same font with tabular figures: the current five-hour session while its window is open, otherwise the week. The label switches to the week when the session resets, without waiting for a reading. VoiceOver retains the full account reading in both modes and also names the session value when that is the number shown.
 
 | Property | Value | Reference |
 |-|-|-|

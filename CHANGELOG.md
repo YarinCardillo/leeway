@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- In Compact mode, the menu bar can show a usage percentage beside the icon: the current session while it is open, otherwise the week. Turn it on in Settings, General.
+
 ## 0.2.0
 
 - Several copies of Leeway (the app, the command line, agent hooks) now share one set of readings. Only one of them checks usage at a time, so the others never repeat the work or disagree.
