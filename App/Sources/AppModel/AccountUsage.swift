@@ -6,10 +6,13 @@ public struct UsagePoint: Identifiable, Sendable, Equatable {
     public var id: Date { date }
     public let date: Date
     public let used: Double
+    /// True for a point estimated from transcripts before the account's first real reading.
+    public let isEstimated: Bool
 
-    public init(date: Date, used: Double) {
+    public init(date: Date, used: Double, isEstimated: Bool = false) {
         self.date = date
         self.used = used
+        self.isEstimated = isEstimated
     }
 }
 
@@ -43,8 +46,38 @@ public struct AccountUsage: Identifiable, Sendable, Equatable {
     public var defaultName: String?
     /// True when the account's folder no longer exists, so no reading can ever arrive.
     public var isFolderMissing = false
+    /// False for an account Leeway only monitors: the advisor never routes work to it.
+    public var isRoutable = true
 
     public var hasDefaultName: Bool { name == defaultName }
+
+    /// The accounts this one may fall back to when it is over its target: the other accounts the advisor can
+    /// route work to. None for an account Leeway only monitors.
+    public func reserveCandidates(in accounts: [AccountUsage]) -> [AccountUsage] {
+        guard isRoutable else { return [] }
+        return accounts.filter { $0.id != id && $0.isRoutable }
+    }
+
+    /// The five-hour usage while its window is still open. Nil without a reading or once the window has reset,
+    /// because a cached value outlives its window until the next reading replaces it.
+    public func activeSessionUsed(at now: Date = Date()) -> Double? {
+        guard let fiveHourUsed else { return nil }
+        guard let fiveHourReset else { return fiveHourUsed }
+        return fiveHourReset > now ? fiveHourUsed : nil
+    }
+
+    /// The weekly usage while its window is still open, for the same reason as `activeSessionUsed`.
+    public func activeWeekUsed(at now: Date = Date()) -> Double? {
+        guard let weeklyUsed else { return nil }
+        guard let reset else { return weeklyUsed }
+        return reset > now ? weeklyUsed : nil
+    }
+
+    /// The next time a window shown from a cached reading resets, when its label must change without a reading.
+    public func nextLabelChange(after now: Date = Date()) -> Date? {
+        [activeSessionUsed(at: now).flatMap { _ in fiveHourReset }, activeWeekUsed(at: now).flatMap { _ in reset }]
+            .compactMap { $0 }.min()
+    }
 
     /// A failed attempt does not make a recent successful reading old.
     public func isReadingOld(pollingMinutes: Int, now: Date = Date()) -> Bool {

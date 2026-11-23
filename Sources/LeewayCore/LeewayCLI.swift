@@ -61,7 +61,7 @@ public struct LeewayCLI: Sendable {
                                  or against a landing target of 1 to 100 percent.
       refresh [--json]            Take a new reading, keeping good data on failure.
       version [--json]            Show the version and the contract versions it speaks.
-      accounts list|rename ID NAME|hide ID|show ID|remove ID|add FOLDER [--provider claude|codex] [--json]
+      accounts list|rename ID NAME|hide ID|show ID|remove ID|add FOLDER [--provider claude|codex|grok] [--json]
                                  Manage the account list every Leeway client shares.
       serve                      Poll usage and serve the API on 127.0.0.1.
       integrations install|uninstall
@@ -106,7 +106,7 @@ public struct LeewayCLI: Sendable {
             throw CoreError.invalidRequest("advise requires --repo, --role, and --task-class")
         }
         let agent = options["--agent"].flatMap(Provider.init(rawValue:))
-        if options["--agent"] != nil, agent == nil { throw CoreError.invalidRequest("invalid agent") }
+        if options["--agent"] != nil, agent?.isAgent != true { throw CoreError.invalidRequest("invalid agent") }
         let target = try options["--target"].map { text in
             guard let value = Double(text) else { throw CoreError.invalidRequest("target must be a number between 1 and 100") }
             return value

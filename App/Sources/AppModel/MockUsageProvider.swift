@@ -8,15 +8,20 @@ public struct MockUsageProvider: UsageProvider {
     public init(now: Date = Date()) { self.now = now }
 
     public func refresh() async throws -> [AccountUsage] {
-        [sample(id: "sample-work", name: "Work", source: "Claude Code", used: 71, forecast: 104, recent: 118),
-         sample(id: "sample-personal", name: "Personal", source: "Claude Code", used: 38, forecast: 78, recent: 86),
-         sample(id: "sample-codex", name: "Codex", source: "Codex", used: 12, forecast: 31, recent: 40)]
+        var codex = sample(id: "sample-codex", name: "Codex", source: "Codex", used: 12, forecast: 31, recent: 40)
+        codex.isActivityBased = true
+        return [sample(id: "sample-work", name: "Work", source: "Claude Code", used: 71, forecast: 104, recent: 118),
+                sample(id: "sample-personal", name: "Personal", source: "Claude Code", used: 38, forecast: 78, recent: 86,
+                       estimatedDays: 2),
+                codex]
     }
 
+    /// Five daily points up to `used`; the first `estimatedDays` are marked as estimated, as after a backfill.
     private func sample(id: String, name: String, source: String,
-                        used: Double, forecast: Double, recent: Double) -> AccountUsage {
+                        used: Double, forecast: Double, recent: Double, estimatedDays: Int = 0) -> AccountUsage {
         let history = (0...4).map { day in
-            UsagePoint(date: now.addingTimeInterval(Double(day - 4) * 86400), used: used * Double(day + 1) / 5)
+            UsagePoint(date: now.addingTimeInterval(Double(day - 4) * 86400), used: used * Double(day + 1) / 5,
+                       isEstimated: day < estimatedDays)
         }
         return AccountUsage(id: id, name: name, source: source, weeklyUsed: used,
                             fiveHourUsed: 18, reset: now.addingTimeInterval(3 * 86400),

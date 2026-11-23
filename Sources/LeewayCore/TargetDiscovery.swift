@@ -64,7 +64,7 @@ public enum TargetDiscovery {
     static func historyIDs(for target: Target, home: URL, accounts: [AccountConfiguration]) -> [String] {
         let resolved = target.configDir.resolvingSymlinksInPath()
         var ids = [target.id, target.provider.rawValue + "-" + stableID(target.configDir)]
-        let standard = home.appendingPathComponent(".\(target.provider.rawValue)")
+        let standard = home.appendingPathComponent(target.provider.standardFolder)
         if standard.resolvingSymlinksInPath() == resolved { ids.append(target.provider.rawValue + "-default") }
         ids += accounts.filter {
             $0.provider == target.provider && $0.configDir.resolvingSymlinksInPath() == resolved
@@ -77,6 +77,8 @@ public enum TargetDiscovery {
         var directories: [(Provider, URL, String?)] = [
             (.claude, home.appendingPathComponent(".claude"), "claude-default"),
             (.codex, home.appendingPathComponent(".codex"), "codex-default")]
+        let grok = home.appendingPathComponent(GrokBotReader.defaultFolder)
+        if GrokBotReader.hasUsageCache(home: grok) { directories.append((.grok, grok, "grok-default")) }
         directories += try profiles(home).map { (.claude, $0, nil) }
         for (provider, variable) in [(Provider.claude, "CLAUDE_CONFIG_DIR"), (.codex, "CODEX_HOME")] {
             if let value = environment[variable], !value.isEmpty { directories.append((provider, expand(value, home: home), nil)) }

@@ -45,6 +45,68 @@ extension LocalizationTests {
                      recentForecast: recent, recordedAt: nil, history: [])
     }
 
+    func testMenuBarUsage_PrefersTheSessionAndFallsBackToTheWeek() {
+        let text = strings(.english)
+        XCTAssertEqual(text.menuBarUsage(account(used: 62)), "62%")
+        let session = AccountUsage(id: "work", name: "Work", source: "claude", weeklyUsed: 62, fiveHourUsed: 18,
+                                   reset: nil, fiveHourReset: nil, weekForecast: nil, recentForecast: nil, recordedAt: nil, history: [])
+        XCTAssertEqual(text.menuBarUsage(session), "18%")
+        XCTAssertNil(text.menuBarUsage(account(used: nil)))
+    }
+
+    private func session(used: Double, resetIn seconds: TimeInterval, now: Date) -> AccountUsage {
+        AccountUsage(id: "work", name: "Work", source: "claude", weeklyUsed: 62, fiveHourUsed: used,
+                     reset: nil, fiveHourReset: now.addingTimeInterval(seconds), weekForecast: nil, recentForecast: nil,
+                     recordedAt: nil, history: [])
+    }
+
+    func testMenuBarUsage_ExpiredSessionFallsBackToTheWeek() {
+        let text = strings(.english), now = Date(timeIntervalSince1970: 1804000000)
+        XCTAssertEqual(text.menuBarUsage(session(used: 98, resetIn: 60, now: now), now: now), "98%")
+        XCTAssertEqual(text.menuBarUsage(session(used: 98, resetIn: 0, now: now), now: now), "62%")
+        XCTAssertEqual(text.menuBarUsage(session(used: 98, resetIn: -60, now: now), now: now), "62%")
+    }
+
+    func testMenuBarUsage_ExpiredSessionAndWeek_ShowNothing() {
+        let text = strings(.english), now = Date(timeIntervalSince1970: 1804000000)
+        let stale = AccountUsage(id: "work", name: "Work", source: "claude", weeklyUsed: 62, fiveHourUsed: 98,
+            reset: now.addingTimeInterval(-60), fiveHourReset: now.addingTimeInterval(-60), weekForecast: nil,
+            recentForecast: nil, recordedAt: nil, history: [])
+        XCTAssertNil(text.menuBarUsage(stale, now: now))
+    }
+
+    func testNextLabelChange_IsTheEarliestResetStillAhead() {
+        let now = Date(timeIntervalSince1970: 1804000000)
+        func usage(session: TimeInterval, week: TimeInterval) -> AccountUsage {
+            AccountUsage(id: "work", name: "Work", source: "claude", weeklyUsed: 62, fiveHourUsed: 18,
+                reset: now.addingTimeInterval(week), fiveHourReset: now.addingTimeInterval(session), weekForecast: nil,
+                recentForecast: nil, recordedAt: nil, history: [])
+        }
+        XCTAssertEqual(usage(session: 60, week: 3600).nextLabelChange(after: now), now.addingTimeInterval(60))
+        XCTAssertEqual(usage(session: -60, week: 3600).nextLabelChange(after: now), now.addingTimeInterval(3600))
+        XCTAssertNil(usage(session: -60, week: -60).nextLabelChange(after: now))
+    }
+
+    func testMenuBarUsageValue_SpeaksTheSessionShownBesideTheIcon() {
+        let now = Date(timeIntervalSince1970: 1804000000)
+        let active = session(used: 18, resetIn: 3600, now: now), expired = session(used: 18, resetIn: -60, now: now)
+        for language in [AppLanguage.english, .italian] {
+            let text = strings(language)
+            let value = text.menuBarUsageValue(active, now: now)
+            XCTAssertTrue(value.hasPrefix(text.menuBarValue(active, now: now)))
+            XCTAssertTrue(value.contains(text.format("current session %@ used", text.percent(18))))
+            XCTAssertEqual(text.menuBarUsageValue(expired, now: now), text.menuBarValue(expired, now: now))
+        }
+    }
+
+    func testMenuBarUsageValue_SessionWithoutAWeeklyReading_SpeaksOnlyTheSession() {
+        let now = Date(timeIntervalSince1970: 1804000000), text = strings(.english)
+        let sessionOnly = AccountUsage(id: "work", name: "Work", source: "claude", weeklyUsed: nil, fiveHourUsed: 18,
+            reset: nil, fiveHourReset: now.addingTimeInterval(3600), weekForecast: nil, recentForecast: nil,
+            recordedAt: nil, history: [])
+        XCTAssertEqual(text.menuBarUsageValue(sessionOnly, now: now), "Work, current session 18% used")
+    }
+
     func testMissingReadings_OmitUpdatedAndResetSentences() {
         let text = strings(.english)
         XCTAssertNil(text.updated(nil, isRefreshing: false))
@@ -58,7 +120,7 @@ extension LocalizationTests {
     func testNoReading_UsesReasonOrActionableFallback() {
         let text = strings(.english)
         var value = account(used: nil)
-        XCTAssertTrue(text.usageFacts(value).contains("Check that Claude Code or Codex is signed in"))
+        XCTAssertTrue(text.usageFacts(value).contains("Check that Claude Code, Codex or Grok Bot is signed in"))
         value.error = .timeout
         XCTAssertEqual(text.usageFacts(value), "Reading timed out")
     }
@@ -463,5 +525,16 @@ extension LocalizationTests {
         value.checkedAt = fixedNow.addingTimeInterval(-120)
         XCTAssertTrue(strings(.english).headline(value, pollingMinutes: 15, now: fixedNow)
             .hasPrefix("No Codex activity for 33m, checked 2m ago. "))
+    }
+}
+
+extension LocalizationTests {
+    func testChartReadout_EstimatedPointSaysSo() {
+        let date = Date(timeIntervalSince1970: 1804000000)
+        let point = ChartReadout(date: date, lower: 12, upper: 12, isForecast: false, isEstimated: true)
+        XCTAssertTrue(strings(.english).chartReadout(point).contains("estimated"))
+        XCTAssertTrue(strings(.italian).chartReadout(point).contains("stimato"))
+        let real = ChartReadout(date: date, lower: 12, upper: 12, isForecast: false)
+        XCTAssertFalse(strings(.english).chartReadout(real).contains("estimated"))
     }
 }

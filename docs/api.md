@@ -16,7 +16,9 @@ oversized bodies 413, unknown routes 404, service failures 500. Error body:
 credentials, session content, or filesystem errors in error messages.
 
 Clients ignore additional response properties. Removing fields or changing
-meaning requires a schema version change. Status and refresh responses use
+meaning requires a schema version change. The `provider`, `source` and `error`
+values may grow without a version change when Leeway learns a new source; a
+client skips an account whose provider it does not know. Status and refresh responses use
 `schema_version: 5`; advice uses version 2; errors retain version 1; headroom uses version 2. The URL remains
 `/v1` because this contract has not been published. Nullable response fields are present even when null.
 
@@ -126,7 +128,7 @@ refresh).
       "properties": {
         "id": {"type": "string", "minLength": 1},
         "label": {"type": "string", "minLength": 1},
-        "provider": {"enum": ["claude", "codex"]},
+        "provider": {"enum": ["claude", "codex", "grok"]},
         "config_dir": {"type": "string"},
         "registered": {"type": "boolean"},
         "aliases": {"type": "array", "items": {"type": "string"}},
@@ -134,7 +136,7 @@ refresh).
         "five_hour": {"$ref": "#/$defs/window"},
         "seven_day": {"$ref": "#/$defs/window"},
         "forecast": {"$ref": "#/$defs/forecast"},
-        "source": {"enum": ["probe", "codex-log", null]},
+        "source": {"enum": ["probe", "codex-log", "grok-cache", null]},
         "stale": {"type": "boolean"},
         "error": {"enum": ["cli_missing", "timeout", "not_signed_in", "invalid_output", "probe_failed", "no_rate_limit_event", null]},
         "as_of": {"$ref": "#/$defs/moment"},
@@ -308,7 +310,7 @@ last refresh when the validated interval changes, without one-second polling.
 `refresh` and the app's Refresh now explicitly opt in to a probe.
 
 `leeway version [--json]` prints the build's contract without opening the store:
-`{"schema_version":1,"version":"0.2.0","status_schema":5,"accounts_schema":1,"advice_schema":2,"store_schema":2}`.
+`{"schema_version":1,"version":"0.3.0","status_schema":5,"accounts_schema":1,"advice_schema":2,"store_schema":2}`.
 `store_schema` is the layout of `history.sqlite` this build reads and writes (SQLite
 `user_version`). A build whose `store_schema` is older than the file's refuses `status`,
 `refresh`, `headroom`, `advise` and `serve` before touching it, prints
@@ -324,9 +326,12 @@ only authority for names, and a policy account's explicit `label` is copied into
 name for that folder. Discovery reuses every saved entry whose folder exists, whichever process found it.
 Quota targets and routing stay in the policy file. Changes take a lock and replace the file atomically, so the
 app, the CLI and other apps can edit together. A build that finds a newer `schema_version` refuses
-with the exit 3 error above and never rewrites the file; a damaged file is an error, not replaced.
+with the exit 3 error above and never rewrites the file; a damaged file is an error, not replaced. A book is
+written at the lowest version that holds its entries: 1 while it lists only Claude and Codex accounts, 2 once it
+lists another provider. A build that knows only version 1 refuses a version 2 book as newer instead of reading it
+as damaged.
 
-`leeway accounts list|rename <id> <name>|hide <id>|show <id>|remove <id>|add <folder> [--provider claude|codex] [--json]`
+`leeway accounts list|rename <id> <name>|hide <id>|show <id>|remove <id>|add <folder> [--provider claude|codex|grok] [--json]`
 print the updated list. With `--json` it is `{"schema_version":1,"accounts":[{"id","provider","label","origin","hidden","folder_exists","order"}]}`
 in display order. Rows carry no email, no folder path and nothing read from the folder.
 `hide` keeps the row but stops showing and polling the account until `show`. `remove` works for any

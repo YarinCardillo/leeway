@@ -180,7 +180,7 @@ public final class CoreUsageProvider: AppModel.UsageProvider {
         guard !renamed.isEmpty else { return }
         try command.edit { book in
             for (account, name) in renamed {
-                try book.rename(folder: account.folder, provider: account.source == "Codex" ? .codex : .claude, label: name)
+                try book.rename(folder: account.folder, provider: Provider(sourceName: account.source), label: name)
             }
         }
     }
@@ -222,10 +222,11 @@ public final class CoreUsageProvider: AppModel.UsageProvider {
         let folder = URL(fileURLWithPath: entry.configDir)
         let defaultName = AccountLabel.defaultName(provider: entry.provider, directory: folder, home: settings.home)
         var account = AccountUsage(id: entry.id, name: entry.label ?? defaultName,
-            source: entry.provider == .codex ? "Codex" : "Claude Code", weeklyUsed: nil,
+            source: entry.provider.sourceName, weeklyUsed: nil,
             fiveHourUsed: nil, reset: nil, fiveHourReset: nil, weekForecast: nil, recentForecast: nil,
             recordedAt: nil, history: [])
         account.defaultName = defaultName
+        account.isRoutable = entry.provider.isAgent
         account.folder = entry.configDir
         account.isStale = true
         account.isFolderMissing = true
@@ -235,10 +236,11 @@ public final class CoreUsageProvider: AppModel.UsageProvider {
     private func missing(_ configuration: AccountConfiguration, book: AccountBook) -> AccountUsage {
         var account = AccountUsage(id: configuration.id,
             name: book.label(configuration.provider, configuration.configDir) ?? configuration.label,
-            source: configuration.provider == .codex ? "Codex" : "Claude Code", weeklyUsed: nil,
+            source: configuration.provider.sourceName, weeklyUsed: nil,
             fiveHourUsed: nil, reset: nil, fiveHourReset: nil, weekForecast: nil, recentForecast: nil,
             recordedAt: nil, history: [])
         account.defaultName = AccountLabel.defaultName(provider: configuration.provider, directory: configuration.configDir, home: settings.home)
+        account.isRoutable = configuration.provider.isAgent
         account.folder = configuration.configDir.path
         account.targetLow = configuration.targetLow
         account.targetHigh = configuration.targetHigh

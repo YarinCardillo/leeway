@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0
+
+- Grok Bot is a new monitored provider. Leeway reads the weekly usage Grok Bot already caches, without sending a request or opening its secrets, and shows how much of the shared Grok Bot and Cursor allowance is left. Grok Bot accounts are shown only; the advisor never routes agent work to them.
+- In Compact mode, the menu bar can show a usage percentage beside the icon: the current session while it is open, otherwise the week. Turn it on in Settings, General.
+- The Codex chart holds each reading until the next one, and the last one up to now, since Codex usage changes only while Codex works. The cursor moves smoothly along it instead of jumping between readings, and the forecast starts from now.
+- Usage estimated from the transcripts of a new account is drawn as a lighter line, and the cursor says when a value is an estimate.
+- Clicking outside a text field in Settings ends editing, so an account name no longer keeps the cursor.
+- An older copy of Leeway that finds a Grok Bot account in the shared account list asks for the newer version instead of reporting the file as damaged.
+- Thanks to 0aprl1 for Grok Bot and the menu bar percentage.
+
 ## 0.2.0
 
 - Several copies of Leeway (the app, the command line, agent hooks) now share one set of readings. Only one of them checks usage at a time, so the others never repeat the work or disagree.

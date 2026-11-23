@@ -76,14 +76,19 @@ ln -s /Applications/Leeway.app/Contents/Helpers/leeway ~/.local/bin/leeway
 
 ## How it reads your quota
 
-Leeway finds the default `~/.claude` and `~/.codex` folders and managed Claude
-profiles. Add other folders, rename accounts, or hide them in Settings.
+Leeway finds the default `~/.claude` and `~/.codex` folders, Grok Bot's data
+folder once Grok Bot has cached a usage reading, and managed Claude profiles. Add other folders, rename accounts, or hide them in Settings.
 
 - Claude: a minimal request through the official `claude` CLI (Haiku, no
   tools, no saved session) returns the current rate limits. Each reading
   uses a very small amount of quota.
 - Codex: Leeway reads the rate limit records Codex already writes locally. No
   request is sent.
+- Grok Bot: Leeway reads the weekly usage Grok Bot already caches for its own
+  usage view. No request is sent, and its secrets are never opened. Grok Bot and
+  Cursor share one included weekly allowance, so the reading covers both. The
+  reading is as fresh as Grok Bot's last check, and Grok Bot is shown only: the
+  advisor never routes agent work to it.
 
 Readings repeat every 15 minutes by default (5 to 30 in Settings), or on
 Refresh Now. A failed reading keeps the last good one, marks it out of date

@@ -67,3 +67,35 @@ extension SettingsWindowTests {
         XCTAssertTrue(NSScreen.screens.contains { $0.visibleFrame.contains(window.frame) })
     }
 }
+
+extension SettingsWindowTests {
+    private func editingWindow() -> (SettingsWindow, NSTextField, NSTextField) {
+        let window = SettingsWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 440), styleMask: [.titled], backing: .buffered, defer: true)
+        let field = NSTextField(frame: NSRect(x: 10, y: 10, width: 180, height: 22))
+        let other = NSTextField(frame: NSRect(x: 10, y: 60, width: 180, height: 22))
+        window.contentView?.addSubview(field)
+        window.contentView?.addSubview(other)
+        window.allowUserFocus()
+        _ = window.makeFirstResponder(field)
+        return (window, field, other)
+    }
+
+    func testClickOnBlankArea_EndsFieldEditing() throws {
+        for type in [NSEvent.EventType.leftMouseDown, .rightMouseDown] {
+            let (window, _, _) = editingWindow()
+            XCTAssertEqual((window.firstResponder as? NSTextView)?.isFieldEditor, true)
+            let click = try XCTUnwrap(NSEvent.mouseEvent(with: type, location: NSPoint(x: 400, y: 300), modifierFlags: [],
+                timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
+            window.sendEvent(click)
+            XCTAssertFalse(window.firstResponder is NSTextView, "\(type)")
+        }
+    }
+
+    func testClickInsideTheEditedFieldOrOnAnotherField_KeepsEditing() {
+        let (window, field, other) = editingWindow()
+        XCTAssertFalse(window.endsEditing(forClickOn: field))
+        XCTAssertFalse(window.endsEditing(forClickOn: window.firstResponder as? NSView))
+        XCTAssertFalse(window.endsEditing(forClickOn: other))
+        XCTAssertTrue(window.endsEditing(forClickOn: window.contentView))
+    }
+}

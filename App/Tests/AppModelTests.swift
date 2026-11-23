@@ -193,3 +193,15 @@ extension AppModelTests {
         XCTAssertFalse(restored.preferences.isMenuBarCompact)
     }
 }
+
+extension AppModelTests {
+    func testMenuBarUsage_IsOffForOlderSettingsAndSurvivesReload() async throws {
+        let old = """
+        {"accounts":{},"pollingMinutes":15,"language":"system","updatesAutomatically":true,"addedFolders":[],"folderProviders":{}}
+        """
+        XCTAssertFalse(try JSONDecoder().decode(AppPreferences.self, from: Data(old.utf8)).showsMenuBarUsage)
+        let defaults = UserDefaults(suiteName: UUID().uuidString)!
+        makeModel(defaults: defaults).setMenuBarUsageShown(true)
+        XCTAssertTrue(makeModel(defaults: defaults).preferences.showsMenuBarUsage)
+    }
+}

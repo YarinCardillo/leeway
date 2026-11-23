@@ -65,7 +65,7 @@ public struct PolicySettingsStore {
             for path in [account.folder] + account.aliases where !path.isEmpty && !book.isRemoved(URL(fileURLWithPath: path))
                 && !result.contains(where: { $0.configDir.path == path }) {
                 result.append(AccountConfiguration(id: path == account.folder ? account.id : stableID(path, prefix: "alias-"),
-                    provider: account.source == "Codex" ? .codex : .claude, label: account.name,
+                    provider: Provider(sourceName: account.source), label: account.name,
                     configDir: URL(fileURLWithPath: path), isEnabled: account.isEnabled, targetLow: account.targetLow, targetHigh: account.targetHigh))
             }
         }

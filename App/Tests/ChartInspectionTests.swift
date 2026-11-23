@@ -67,3 +67,80 @@ extension ChartInspectionTests {
         XCTAssertEqual(end.upper, 60)
     }
 }
+
+extension ChartInspectionTests {
+    /// A Codex account: readings arrive only when Codex works, here at 1 h (30%) and 12 h (32%).
+    private func activityBased() -> AccountUsage {
+        var value = AccountUsage(id: "codex", name: "Codex", source: "Codex", weeklyUsed: 32, fiveHourUsed: nil,
+            reset: start.addingTimeInterval(7 * 86400), fiveHourReset: nil, weekForecast: 60, recentForecast: 70,
+            recordedAt: start.addingTimeInterval(12 * 3600), history: [UsagePoint(date: start.addingTimeInterval(3600), used: 30)])
+        value.isActivityBased = true
+        return value
+    }
+
+    func testReadout_ActivityBased_HoldsTheLastReadingAtTheCursorTime() throws {
+        let cursor = start.addingTimeInterval(6 * 3600 + 17)
+        let readout = try XCTUnwrap(activityBased().chartReadout(at: cursor))
+        XCTAssertEqual(readout.date, cursor)
+        XCTAssertEqual(readout.lower, 30)
+        XCTAssertEqual(readout.upper, 30)
+        XCTAssertFalse(readout.isForecast)
+    }
+
+    func testReadout_ActivityBased_BeforeTheFirstReadingShowsTheFirstReading() throws {
+        let readout = try XCTUnwrap(activityBased().chartReadout(at: start))
+        XCTAssertEqual(readout.date, start.addingTimeInterval(3600))
+        XCTAssertEqual(readout.lower, 30)
+    }
+
+    func testInspectionPoints_ActivityBased_RoundTripThroughTheReadout() {
+        let value = activityBased()
+        XCTAssertEqual(value.chartInspectionPoints.filter { !$0.isForecast }.map(\.lower), [30, 32])
+        for point in value.chartInspectionPoints { XCTAssertEqual(value.chartReadout(at: point.date), point) }
+    }
+}
+
+extension ChartInspectionTests {
+    func testReadout_EstimatedSampleIsMarked_RealOneIsNot() throws {
+        var value = account()
+        value = AccountUsage(id: value.id, name: value.name, source: value.source, weeklyUsed: value.weeklyUsed,
+            fiveHourUsed: nil, reset: value.reset, fiveHourReset: nil, weekForecast: value.weekForecast,
+            recentForecast: value.recentForecast, recordedAt: value.recordedAt,
+            history: [UsagePoint(date: start, used: 10, isEstimated: true), UsagePoint(date: start.addingTimeInterval(86400), used: 30)])
+        XCTAssertEqual(try XCTUnwrap(value.chartReadout(at: start)).isEstimated, true)
+        XCTAssertEqual(try XCTUnwrap(value.chartReadout(at: start.addingTimeInterval(86400))).isEstimated, false)
+        XCTAssertEqual(try XCTUnwrap(value.chartReadout(at: start.addingTimeInterval(6 * 86400))).isEstimated, false)
+    }
+}
+
+extension ChartInspectionTests {
+    func testSeries_ActivityBased_HoldsTheLastReadingUpToNow() {
+        let now = start.addingTimeInterval(30 * 3600)
+        let series = activityBased().chartSeries(from: start, to: start.addingTimeInterval(7 * 86400), now: now)
+        XCTAssertEqual(series.line.last, UsagePoint(date: now, used: 32))
+        XCTAssertEqual(series.now, UsagePoint(date: now, used: 32))
+    }
+
+    func testReadout_ActivityBased_IdleTimeBeforeNowIsHeldNotForecast() throws {
+        let now = start.addingTimeInterval(30 * 3600), idle = start.addingTimeInterval(20 * 3600 + 17)
+        let held = try XCTUnwrap(activityBased().chartReadout(at: idle, now: now))
+        XCTAssertEqual(held.date, idle)
+        XCTAssertEqual(held.lower, 32)
+        XCTAssertFalse(held.isForecast)
+        XCTAssertTrue(try XCTUnwrap(activityBased().chartReadout(at: start.addingTimeInterval(40 * 3600), now: now)).isForecast)
+    }
+
+    func testSeries_Polled_EndsOnItsReadingWhateverTheTime() {
+        let series = account().chartSeries(from: start, to: start.addingTimeInterval(7 * 86400), now: start.addingTimeInterval(5 * 86400))
+        XCTAssertEqual(series.now, UsagePoint(date: start.addingTimeInterval(3 * 86400), used: 60))
+    }
+}
+
+extension ChartInspectionTests {
+    func testInspectionPoints_ActivityBased_IncludeTheHeldNowAndRoundTrip() {
+        let value = activityBased(), now = start.addingTimeInterval(30 * 3600)
+        let points = value.chartInspectionPoints(now: now)
+        XCTAssertEqual(points.filter { !$0.isForecast }.map(\.lower), [30, 32, 32])
+        for point in points { XCTAssertEqual(value.chartReadout(at: point.date, now: now), point) }
+    }
+}

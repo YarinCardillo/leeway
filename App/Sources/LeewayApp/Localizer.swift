@@ -63,13 +63,14 @@ extension Localizer {
 
     func chartReadout(_ point: ChartReadout) -> String {
         let time = point.date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().hour().minute().locale(locale))
-        return point.isForecast ? format("%@, forecast %@ to %@", time, percent(point.lower), percent(point.upper))
+        if point.isForecast { return format("%@, forecast %@ to %@", time, percent(point.lower), percent(point.upper)) }
+        return point.isEstimated ? format("%@, about %@ used, estimated", time, percent(point.lower))
             : format("%@, %@ used", time, percent(point.lower))
     }
 
     func refreshFailure(hasReading: Bool) -> String {
         text(hasReading ? "Could not refresh. Leeway kept the last reading."
-             : "No reading yet. Check that Claude Code or Codex is signed in, then choose Refresh Now.")
+             : "No reading yet. Check that Claude Code, Codex or Grok Bot is signed in, then choose Refresh Now.")
     }
 
     func updated(_ date: Date?, isRefreshing: Bool) -> String? {
@@ -88,7 +89,7 @@ extension Localizer {
     func usageFacts(_ account: AccountUsage) -> String {
         guard let used = account.weeklyUsed else {
             if account.isFolderMissing { return text("Folder not found. Remove this account in Settings.") }
-            return readError(account) ?? text("No reading yet. Check that Claude Code or Codex is signed in, then choose Refresh Now.")
+            return readError(account) ?? text("No reading yet. Check that Claude Code, Codex or Grok Bot is signed in, then choose Refresh Now.")
         }
         let target = targetRange(account)
         guard let low = account.lowerForecast, let high = account.upperForecast else {
@@ -220,6 +221,21 @@ extension Localizer {
     func menuBarTitle(_ account: AccountUsage) -> String {
         let title = "\(titleName(account.name)) \(percent(account.weeklyUsed))"
         return account.upperForecast.map { title + " → " + percent($0) } ?? title
+    }
+
+    /// The percentage beside the compact icon: the current session while its window is open, otherwise the week
+    /// while its window is open, otherwise nothing until the next reading.
+    func menuBarUsage(_ account: AccountUsage, now: Date = Date()) -> String? {
+        (account.activeSessionUsed(at: now) ?? account.activeWeekUsed(at: now)).map { percent($0) }
+    }
+
+    /// The spoken value while the percentage is beside the icon: it names the session when that is the number shown.
+    func menuBarUsageValue(_ account: AccountUsage, pollingMinutes: Int = 15, now: Date = Date()) -> String {
+        let value = menuBarValue(account, pollingMinutes: pollingMinutes, now: now)
+        guard let session = account.activeSessionUsed(at: now) else { return value }
+        let spokenSession = format("current session %@ used", percent(session))
+        guard account.weeklyUsed != nil else { return account.name + ", " + spokenSession }
+        return value + ", " + spokenSession
     }
 
     func menuBarValue(_ account: AccountUsage, pollingMinutes: Int = 15, now: Date = Date()) -> String {
