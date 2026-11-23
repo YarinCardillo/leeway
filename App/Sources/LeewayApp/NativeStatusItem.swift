@@ -13,8 +13,8 @@ final class NativeStatusItem {
     private let item: NSStatusItem
     private let menu: UsageMenu
     private var shownVerdict: UsageStatus?
-    /// Redraws the label when the session shown beside the icon resets, since no reading arrives at that moment.
-    private var sessionResetTimer: Timer?
+    /// Redraws the label when a window shown beside the icon resets, since no reading arrives at that moment.
+    private var labelChangeTimer: Timer?
     private var systemObservers: [NSObjectProtocol] = []
 
     init(model: UsageModel, openSettings: @escaping () -> Void) {
@@ -80,7 +80,7 @@ final class NativeStatusItem {
         button.imagePosition = .imageOnly
         button.attributedTitle = NSAttributedString(string: "")
         let showsUsage = model.preferences.isMenuBarCompact && model.preferences.showsMenuBarUsage
-        scheduleSessionReset(showsUsage ? account : nil)
+        scheduleLabelChange(showsUsage ? account : nil)
         if showsUsage, let account, let usage = strings.menuBarUsage(account) {
             let title = NSAttributedString(string: " " + usage, attributes: [
                 .font: NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)])
@@ -119,15 +119,15 @@ final class NativeStatusItem {
             NotificationCenter.default.addObserver(forName: .NSSystemClockDidChange, object: nil, queue: .main, using: redraw)]
     }
 
-    private func scheduleSessionReset(_ account: AccountUsage?) {
-        sessionResetTimer?.invalidate()
-        sessionResetTimer = nil
-        guard let account, account.activeSessionUsed() != nil, let reset = account.fiveHourReset else { return }
-        let timer = Timer(fire: reset, interval: 0, repeats: false) { [weak self] _ in
+    private func scheduleLabelChange(_ account: AccountUsage?) {
+        labelChangeTimer?.invalidate()
+        labelChangeTimer = nil
+        guard let change = account?.nextLabelChange() else { return }
+        let timer = Timer(fire: change, interval: 0, repeats: false) { [weak self] _ in
             Task { @MainActor in self?.updateButton() }
         }
         RunLoop.main.add(timer, forMode: .common)
-        sessionResetTimer = timer
+        labelChangeTimer = timer
     }
 
 }

@@ -66,6 +66,19 @@ public struct AccountUsage: Identifiable, Sendable, Equatable {
         return fiveHourReset > now ? fiveHourUsed : nil
     }
 
+    /// The weekly usage while its window is still open, for the same reason as `activeSessionUsed`.
+    public func activeWeekUsed(at now: Date = Date()) -> Double? {
+        guard let weeklyUsed else { return nil }
+        guard let reset else { return weeklyUsed }
+        return reset > now ? weeklyUsed : nil
+    }
+
+    /// The next time a window shown from a cached reading resets, when its label must change without a reading.
+    public func nextLabelChange(after now: Date = Date()) -> Date? {
+        [activeSessionUsed(at: now).flatMap { _ in fiveHourReset }, activeWeekUsed(at: now).flatMap { _ in reset }]
+            .compactMap { $0 }.min()
+    }
+
     /// A failed attempt does not make a recent successful reading old.
     public func isReadingOld(pollingMinutes: Int, now: Date = Date()) -> Bool {
         guard weeklyUsed != nil, let recordedAt else { return false }

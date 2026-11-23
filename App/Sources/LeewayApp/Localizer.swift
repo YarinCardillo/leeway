@@ -223,9 +223,10 @@ extension Localizer {
         return account.upperForecast.map { title + " → " + percent($0) } ?? title
     }
 
-    /// The percentage beside the compact icon: the current session while its window is open, otherwise the week.
+    /// The percentage beside the compact icon: the current session while its window is open, otherwise the week
+    /// while its window is open, otherwise nothing until the next reading.
     func menuBarUsage(_ account: AccountUsage, now: Date = Date()) -> String? {
-        (account.activeSessionUsed(at: now) ?? account.weeklyUsed).map { percent($0) }
+        (account.activeSessionUsed(at: now) ?? account.activeWeekUsed(at: now)).map { percent($0) }
     }
 
     /// The spoken value while the percentage is beside the icon: it names the session when that is the number shown.
