@@ -54,6 +54,31 @@ extension LocalizationTests {
         XCTAssertNil(text.menuBarUsage(account(used: nil)))
     }
 
+    private func session(used: Double, resetIn seconds: TimeInterval, now: Date) -> AccountUsage {
+        AccountUsage(id: "work", name: "Work", source: "claude", weeklyUsed: 62, fiveHourUsed: used,
+                     reset: nil, fiveHourReset: now.addingTimeInterval(seconds), weekForecast: nil, recentForecast: nil,
+                     recordedAt: nil, history: [])
+    }
+
+    func testMenuBarUsage_ExpiredSessionFallsBackToTheWeek() {
+        let text = strings(.english), now = Date(timeIntervalSince1970: 1804000000)
+        XCTAssertEqual(text.menuBarUsage(session(used: 98, resetIn: 60, now: now), now: now), "98%")
+        XCTAssertEqual(text.menuBarUsage(session(used: 98, resetIn: 0, now: now), now: now), "62%")
+        XCTAssertEqual(text.menuBarUsage(session(used: 98, resetIn: -60, now: now), now: now), "62%")
+    }
+
+    func testMenuBarUsageValue_SpeaksTheSessionShownBesideTheIcon() {
+        let now = Date(timeIntervalSince1970: 1804000000)
+        let active = session(used: 18, resetIn: 3600, now: now), expired = session(used: 18, resetIn: -60, now: now)
+        for language in [AppLanguage.english, .italian] {
+            let text = strings(language)
+            let value = text.menuBarUsageValue(active, now: now)
+            XCTAssertTrue(value.hasPrefix(text.menuBarValue(active, now: now)))
+            XCTAssertTrue(value.contains(text.format("current session %@ used", text.percent(18))))
+            XCTAssertEqual(text.menuBarUsageValue(expired, now: now), text.menuBarValue(expired, now: now))
+        }
+    }
+
     func testMissingReadings_OmitUpdatedAndResetSentences() {
         let text = strings(.english)
         XCTAssertNil(text.updated(nil, isRefreshing: false))

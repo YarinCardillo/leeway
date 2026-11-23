@@ -134,3 +134,4 @@
 "Source on GitHub" = "Source on GitHub";
 "Show usage beside the icon" = "Show usage beside the icon";
 "The current session, or the week when there is no session reading" = "The current session, or the week when there is no session reading";
+"current session %@ used" = "current session %@ used";

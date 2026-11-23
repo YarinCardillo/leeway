@@ -134,3 +134,4 @@
 "Source on GitHub" = "Codice sorgente su GitHub";
 "Show usage beside the icon" = "Mostra l’utilizzo accanto all’icona";
 "The current session, or the week when there is no session reading" = "La sessione in corso, oppure la settimana se manca una lettura della sessione";
+"current session %@ used" = "sessione in corso %@ usato";

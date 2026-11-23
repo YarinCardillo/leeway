@@ -13,6 +13,8 @@ final class NativeStatusItem {
     private let item: NSStatusItem
     private let menu: UsageMenu
     private var shownVerdict: UsageStatus?
+    /// Redraws the label when the session shown beside the icon resets, since no reading arrives at that moment.
+    private var sessionResetTimer: Timer?
 
     init(model: UsageModel, openSettings: @escaping () -> Void) {
         self.model = model
@@ -75,8 +77,9 @@ final class NativeStatusItem {
         button.contentTintColor = Self.iconTint(status: account?.status, severity: account?.severity)
         button.imagePosition = .imageOnly
         button.attributedTitle = NSAttributedString(string: "")
-        if model.preferences.isMenuBarCompact, model.preferences.showsMenuBarUsage,
-           let account, let usage = strings.menuBarUsage(account) {
+        let showsUsage = model.preferences.isMenuBarCompact && model.preferences.showsMenuBarUsage
+        scheduleSessionReset(showsUsage ? account : nil)
+        if showsUsage, let account, let usage = strings.menuBarUsage(account) {
             let title = NSAttributedString(string: " " + usage, attributes: [
                 .font: NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)])
             button.imagePosition = .imageLeading
@@ -94,7 +97,25 @@ final class NativeStatusItem {
                 .font: NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)])
         }
         button.setAccessibilityLabel("Leeway")
-        button.setAccessibilityValue(account.map { strings.menuBarValue($0, pollingMinutes: model.preferences.pollingMinutes) } ?? strings.text("No readings"))
+        button.setAccessibilityValue(spokenValue(account, strings: strings, showsUsage: showsUsage))
+    }
+
+    private func spokenValue(_ account: AccountUsage?, strings: Localizer, showsUsage: Bool) -> String {
+        guard let account else { return strings.text("No readings") }
+        let minutes = model.preferences.pollingMinutes
+        return showsUsage ? strings.menuBarUsageValue(account, pollingMinutes: minutes)
+            : strings.menuBarValue(account, pollingMinutes: minutes)
+    }
+
+    private func scheduleSessionReset(_ account: AccountUsage?) {
+        sessionResetTimer?.invalidate()
+        sessionResetTimer = nil
+        guard let account, account.activeSessionUsed() != nil, let reset = account.fiveHourReset else { return }
+        let timer = Timer(fire: reset, interval: 0, repeats: false) { [weak self] _ in
+            Task { @MainActor in self?.updateButton() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        sessionResetTimer = timer
     }
 
 }
