@@ -21,6 +21,12 @@ struct GeneralSettings: View {
                     Text(strings.text("Compact")).tag(true)
                     Text(strings.text("Percentages")).tag(false)
                 }
+                if model.preferences.isMenuBarCompact {
+                    Toggle(isOn: Binding(get: { model.preferences.showsMenuBarUsage }, set: { model.setMenuBarUsageShown($0) })) {
+                        Text(strings.text("Show usage beside the icon"))
+                        Text(strings.text("The current session, or the week when there is no session reading"))
+                    }
+                }
                 Picker(strings.text("Language"), selection: Binding(
                     get: { model.preferences.language }, set: { model.setLanguage($0) }
                 )) {
