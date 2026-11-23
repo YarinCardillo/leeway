@@ -28,7 +28,9 @@ public struct AccountEntry: Codable, Equatable, Sendable {
 /// A removed folder stays out of discovery until it is added again. A hidden account stays in the book
 /// but is neither shown nor polled until it is shown again.
 public struct AccountBook: Codable, Equatable, Sendable {
-    public static let currentSchemaVersion = 1
+    /// 2 allows providers beyond Claude and Codex. A build that knows only version 1 refuses the file as newer
+    /// instead of reading it as damaged. Version 1 files are read and written back as version 2.
+    public static let currentSchemaVersion = 2
     static let maximumLabelLength = 80
 
     public private(set) var schemaVersion = AccountBook.currentSchemaVersion
@@ -42,7 +44,8 @@ public struct AccountBook: Codable, Equatable, Sendable {
     /// Decodes a book, tolerating files written before `app_preferences_imported` existed.
     public init(from decoder: any Decoder) throws {
         let fields = try decoder.container(keyedBy: CodingKeys.self)
-        schemaVersion = try fields.decode(Int.self, forKey: .schemaVersion)
+        // `load` has already refused newer versions; whatever this build writes back is its own version.
+        _ = try fields.decode(Int.self, forKey: .schemaVersion)
         accounts = try fields.decode([AccountEntry].self, forKey: .accounts)
         removedFolders = try fields.decode([String].self, forKey: .removedFolders)
         appPreferencesImported = try fields.decodeIfPresent(Bool.self, forKey: .appPreferencesImported) ?? false

@@ -142,7 +142,7 @@ private func labels(_ text: String) throws -> [String: String] {
     defer { try? FileManager.default.removeItem(at: home) }
     let url = AccountBook.fileURL(home: home)
     try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-    let text = "{\"schema_version\":2,\"accounts\":[{\"id\":\"x\",\"provider\":\"gemini\",\"folder\":\"/a\"}]}"
+    let text = "{\"schema_version\":\(AccountBook.currentSchemaVersion + 1),\"accounts\":[{\"id\":\"x\",\"provider\":\"gemini\",\"folder\":\"/a\"}]}"
     try Data(text.utf8).write(to: url)
     #expect { try AccountBook.load(url) } throws: { ($0 as? CoreError).map { $0.description == CoreError.storeNewerThanBinary.description } ?? false }
 }
