@@ -188,6 +188,7 @@ public final class UsageModel {
     }
 
     public func setMenuBarCompact(_ isCompact: Bool) { preferences.isMenuBarCompact = isCompact; save() }
+    public func setMenuBarUsageShown(_ isShown: Bool) { preferences.showsMenuBarUsage = isShown; save() }
 
     public func setLanguage(_ language: AppLanguage) { preferences.language = language; save() }
     public func setAutomaticUpdates(_ isEnabled: Bool) { preferences.updatesAutomatically = isEnabled; save() }

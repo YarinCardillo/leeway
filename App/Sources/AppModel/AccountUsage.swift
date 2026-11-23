@@ -46,6 +46,14 @@ public struct AccountUsage: Identifiable, Sendable, Equatable {
 
     public var hasDefaultName: Bool { name == defaultName }
 
+    /// The five-hour usage while its window is still open. Nil without a reading or once the window has reset,
+    /// because a cached value outlives its window until the next reading replaces it.
+    public func activeSessionUsed(at now: Date = Date()) -> Double? {
+        guard let fiveHourUsed else { return nil }
+        guard let fiveHourReset else { return fiveHourUsed }
+        return fiveHourReset > now ? fiveHourUsed : nil
+    }
+
     /// A failed attempt does not make a recent successful reading old.
     public func isReadingOld(pollingMinutes: Int, now: Date = Date()) -> Bool {
         guard weeklyUsed != nil, let recordedAt else { return false }
