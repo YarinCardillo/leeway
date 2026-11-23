@@ -15,7 +15,7 @@ The optional user policy is `~/.config/leeway/policy.toml`. No policy means
 all discovered enabled accounts may serve every repository. Account names
 come from `label`, never account emails. Discovery checks the default
 `.claude` and `.codex` directories, Grok Bot's data folder
-(`~/Library/Application Support/Grok Bot`), added policy directories, the active
+(`~/Library/Application Support/Grok Bot`) once it holds a weekly usage cache slice, added policy directories, the active
 `CLAUDE_CONFIG_DIR` and `CODEX_HOME`, and managed Claude profiles described
 in the spec. It checks file structure without opening credential files.
 

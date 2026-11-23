@@ -70,10 +70,14 @@ private func persistence(_ home: URL) throws -> URL {
     #expect(GrokBotReader.parse(Data(usageCache(used: -1).utf8), account: "grok", now: readClock) == nil)
 }
 
-@Test func grokBotFolderIsDiscoveredButNeverOfferedToAgents() throws {
+@Test func grokBotIsDiscoveredOnceItCachesUsageButNeverOfferedToAgents() throws {
     let home = try temporaryDirectory()
     defer { try? FileManager.default.removeItem(at: home) }
-    try FileManager.default.createDirectory(at: home.appendingPathComponent(GrokBotReader.defaultFolder), withIntermediateDirectories: true)
+    let folder = home.appendingPathComponent(GrokBotReader.defaultFolder)
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    #expect(try TargetDiscovery.discover(home: home, accounts: [], environment: [:]).isEmpty)
+    try usageCache().write(to: try persistence(folder).appendingPathComponent(sliceName("sand.client.slice.account.a.weekly-usage.cache")),
+        atomically: true, encoding: .utf8)
     let found = try TargetDiscovery.discover(home: home, accounts: [], environment: [:])
     #expect(found.map(\.id) == ["grok-default"])
     #expect(found.map(\.label) == ["Grok Bot"])
