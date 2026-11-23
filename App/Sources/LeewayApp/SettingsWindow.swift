@@ -35,7 +35,8 @@ final class SettingsWindow: NSWindow {
     override func sendEvent(_ event: NSEvent) {
         if [.leftMouseDown, .rightMouseDown, .keyDown].contains(event.type) { allowUserFocus() }
         // The window frame view has no superview, so it hit-tests in window coordinates.
-        if event.type == .leftMouseDown, endsEditing(forClickOn: contentView?.superview?.hitTest(event.locationInWindow)) {
+        if [.leftMouseDown, .rightMouseDown].contains(event.type),
+           endsEditing(forClickOn: contentView?.superview?.hitTest(event.locationInWindow)) {
             _ = makeFirstResponder(nil)
         }
         super.sendEvent(event)

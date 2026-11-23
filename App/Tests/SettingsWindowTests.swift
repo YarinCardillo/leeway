@@ -81,12 +81,14 @@ extension SettingsWindowTests {
     }
 
     func testClickOnBlankArea_EndsFieldEditing() throws {
-        let (window, _, _) = editingWindow()
-        XCTAssertEqual((window.firstResponder as? NSTextView)?.isFieldEditor, true)
-        let click = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseDown, location: NSPoint(x: 400, y: 300), modifierFlags: [],
-            timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
-        window.sendEvent(click)
-        XCTAssertFalse(window.firstResponder is NSTextView)
+        for type in [NSEvent.EventType.leftMouseDown, .rightMouseDown] {
+            let (window, _, _) = editingWindow()
+            XCTAssertEqual((window.firstResponder as? NSTextView)?.isFieldEditor, true)
+            let click = try XCTUnwrap(NSEvent.mouseEvent(with: type, location: NSPoint(x: 400, y: 300), modifierFlags: [],
+                timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
+            window.sendEvent(click)
+            XCTAssertFalse(window.firstResponder is NSTextView, "\(type)")
+        }
     }
 
     func testClickInsideTheEditedFieldOrOnAnotherField_KeepsEditing() {
