@@ -121,6 +121,9 @@ private func persistence(_ home: URL) throws -> URL {
     let snapshot = GrokBotReader.parse(Data(long.utf8), account: "grok", now: readClock)
     #expect(snapshot?.sevenDay.pct == 4.1)
     #expect(snapshot?.plan == nil)
+    let marks = usageCache().replacingOccurrences(of: #""unifiedPlanName":"Super""#,
+        with: #""unifiedPlanName":"e"# + String(repeating: "\u{301}", count: 2000) + #"""#)
+    #expect(GrokBotReader.parse(Data(marks.utf8), account: "grok", now: readClock)?.plan == nil)
 }
 
 @Test func httpAdvise_MonitoredOnlyAgent_Returns400() async {

@@ -11,8 +11,8 @@ public enum GrokBotReader {
     private static let clockSkew: TimeInterval = 60
     /// The included allowance is weekly: a reset further than a week (plus an hour of slack) after the reading is not it.
     private static let longestWindow: TimeInterval = 7 * 86400 + 3600
-    /// Plan names are short labels; anything longer is not a plan name and is not stored.
-    private static let maxPlanLength = 40
+    /// Plan names are short labels; anything longer (counted in UTF-8 bytes, so combining marks count) is not stored.
+    private static let maxPlanBytes = 64
 
     /// Returns the newest cached reading across the signed-in accounts in `home`, the Grok Bot data folder.
     /// A slice that cannot be read safely is skipped, so it cannot hide a readable sibling.
@@ -56,7 +56,7 @@ public enum GrokBotReader {
               let reset = milliseconds(usage["nextResetMs"]), reset > at, reset <= at.addingTimeInterval(longestWindow),
               let used = quotaNumber(usage["percentUsed"]), used >= 0 else { return nil }
         let label = (usage["unifiedPlanName"] as? String) ?? (usage["grokPlanLabel"] as? String)
-        let plan = label.flatMap { $0.count <= maxPlanLength ? $0 : nil }
+        let plan = label.flatMap { $0.utf8.count <= maxPlanBytes ? $0 : nil }
         // On-demand spend continues past the included allowance; the included window itself tops out at 100%.
         return Snapshot(account: account, at: at, plan: plan, sevenDay: UsageWindow(pct: rounded(min(used, 100)), resetsAt: reset))
     }
