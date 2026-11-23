@@ -26,9 +26,9 @@ extension AccountUsage {
 
     /// Selects a measured sample, or the held reading of an activity-based account, or interpolates both
     /// forecast bounds at the requested time.
-    public func chartReadout(at date: Date) -> ChartReadout? {
+    public func chartReadout(at date: Date, now: Date = Date()) -> ChartReadout? {
         guard let reset else { return nil }
-        let series = chartSeries(from: reset.addingTimeInterval(-7 * 86400), to: reset)
+        let series = chartSeries(from: reset.addingTimeInterval(-7 * 86400), to: reset, now: now)
         guard let anchor = series.now else { return nil }
         if date > anchor.date, reset > anchor.date, let low = lowerForecast, let high = upperForecast {
             // Forecast points are shown per hour: the projection is a pace, not minute-level data.
@@ -55,15 +55,18 @@ extension AccountUsage {
     }
 
     /// Keyboard and accessibility stepping visit measured samples and daily forecast positions.
-    public var chartInspectionPoints: [ChartReadout] {
+    public var chartInspectionPoints: [ChartReadout] { chartInspectionPoints(now: Date()) }
+
+    /// The stepping points as of `now`, read with that same `now` so the held line and the forecast agree.
+    public func chartInspectionPoints(now: Date) -> [ChartReadout] {
         guard let reset else { return [] }
-        let series = chartSeries(from: reset.addingTimeInterval(-7 * 86400), to: reset)
+        let series = chartSeries(from: reset.addingTimeInterval(-7 * 86400), to: reset, now: now)
         var dates = series.line.map(\.date)
         if let anchor = series.now, anchor.date < reset, upperForecast != nil {
             var date = anchor.date.addingTimeInterval(86400)
             while date < reset { dates.append(date); date = date.addingTimeInterval(86400) }
             dates.append(reset)
         }
-        return dates.compactMap { chartReadout(at: $0) }
+        return dates.compactMap { chartReadout(at: $0, now: now) }
     }
 }

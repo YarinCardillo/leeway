@@ -112,3 +112,35 @@ extension ChartInspectionTests {
         XCTAssertEqual(try XCTUnwrap(value.chartReadout(at: start.addingTimeInterval(6 * 86400))).isEstimated, false)
     }
 }
+
+extension ChartInspectionTests {
+    func testSeries_ActivityBased_HoldsTheLastReadingUpToNow() {
+        let now = start.addingTimeInterval(30 * 3600)
+        let series = activityBased().chartSeries(from: start, to: start.addingTimeInterval(7 * 86400), now: now)
+        XCTAssertEqual(series.line.last, UsagePoint(date: now, used: 32))
+        XCTAssertEqual(series.now, UsagePoint(date: now, used: 32))
+    }
+
+    func testReadout_ActivityBased_IdleTimeBeforeNowIsHeldNotForecast() throws {
+        let now = start.addingTimeInterval(30 * 3600), idle = start.addingTimeInterval(20 * 3600 + 17)
+        let held = try XCTUnwrap(activityBased().chartReadout(at: idle, now: now))
+        XCTAssertEqual(held.date, idle)
+        XCTAssertEqual(held.lower, 32)
+        XCTAssertFalse(held.isForecast)
+        XCTAssertTrue(try XCTUnwrap(activityBased().chartReadout(at: start.addingTimeInterval(40 * 3600), now: now)).isForecast)
+    }
+
+    func testSeries_Polled_EndsOnItsReadingWhateverTheTime() {
+        let series = account().chartSeries(from: start, to: start.addingTimeInterval(7 * 86400), now: start.addingTimeInterval(5 * 86400))
+        XCTAssertEqual(series.now, UsagePoint(date: start.addingTimeInterval(3 * 86400), used: 60))
+    }
+}
+
+extension ChartInspectionTests {
+    func testInspectionPoints_ActivityBased_IncludeTheHeldNowAndRoundTrip() {
+        let value = activityBased(), now = start.addingTimeInterval(30 * 3600)
+        let points = value.chartInspectionPoints(now: now)
+        XCTAssertEqual(points.filter { !$0.isForecast }.map(\.lower), [30, 32, 32])
+        for point in points { XCTAssertEqual(value.chartReadout(at: point.date, now: now), point) }
+    }
+}
