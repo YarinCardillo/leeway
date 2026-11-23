@@ -58,7 +58,7 @@ extension LocalizationTests {
     func testNoReading_UsesReasonOrActionableFallback() {
         let text = strings(.english)
         var value = account(used: nil)
-        XCTAssertTrue(text.usageFacts(value).contains("Check that Claude Code or Codex is signed in"))
+        XCTAssertTrue(text.usageFacts(value).contains("Check that Claude Code, Codex or Grok Bot is signed in"))
         value.error = .timeout
         XCTAssertEqual(text.usageFacts(value), "Reading timed out")
     }
