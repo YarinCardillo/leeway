@@ -122,3 +122,11 @@ private func persistence(_ home: URL) throws -> URL {
     #expect(snapshot?.sevenDay.pct == 4.1)
     #expect(snapshot?.plan == nil)
 }
+
+@Test func httpAdvise_MonitoredOnlyAgent_Returns400() async {
+    let router = HTTPRouter(provider: FixtureProvider())
+    let body = Data(#"{"repo":"/x","role":"builder","task_class":"design","agent":"grok"}"#.utf8)
+    let result = await router.handle(HTTPRequest(method: "POST", path: "/v1/advise", headers: ["host": "127.0.0.1:8799"], body: body))
+    #expect(result.status == 400)
+    #expect(throws: CoreError.self) { try AdviceRequest.parse(body) }
+}

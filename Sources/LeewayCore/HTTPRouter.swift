@@ -66,7 +66,8 @@ extension AdviceRequest {
     public static func parse(_ body: Data) throws -> AdviceRequest {
         guard let raw = jsonObject(body), Set(raw.keys).isSubset(of: requestKeys),
               let result = try? JSONCodec.decoder().decode(AdviceRequest.self, from: body),
-              !result.repo.isEmpty, result.account == nil || result.account?.isEmpty == false else {
+              !result.repo.isEmpty, result.account == nil || result.account?.isEmpty == false,
+              result.agent?.isAgent != false else {
             throw CoreError.invalidRequest("body must contain a valid repo, role, task_class, agent, account, target, and candidates")
         }
         try checkTarget(result.target)
